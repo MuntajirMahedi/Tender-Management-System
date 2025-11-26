@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import CrudListPage from "../common/CrudListPage";
 import { renewalApi } from "../../api";
 import { formatDate } from "../../utils/formatters";
+import usePermission from "../../hooks/usePermission";
+import RequirePermission from "../../components/RequirePermission";
 
 const columns = [
   {
@@ -35,35 +37,51 @@ const columns = [
   }
 ];
 
-const RenewalList = () => (
-  <CrudListPage
-    title="Renewals"
-    columns={columns}
-    fetcher={renewalApi.getRenewals}
-    dataKey="renewals"
-    createPath="/renewals/new"
+const RenewalList = () => {
+  const { can } = usePermission();
 
-    // ⭐ Add deleteFn to each row
-    responseAdapter={(response) => ({
-      items: (response.renewals || []).map((item) => ({
-        ...item,
-        deleteFn: renewalApi.deleteRenewal   // ⭐ DELETE ENABLED
-      })),
-      total: response.count || 0
-    })}
+  const canView = can("renewal:view");
+  const canCreate = can("renewal:create");
+  const canDelete = can("renewal:delete");
 
-    actions={(row) => (
-      <div className="btn-group btn-group-sm">
-        <Link
-          to={`/renewals/${row.id || row._id}`}
-          className="btn btn-outline-secondary"
-        >
-          View
-        </Link>
-        {/* Delete button auto-added by DataTable */}
-      </div>
-    )}
-  />
-);
+  return (
+    <RequirePermission permission="renewal:view">
+      <CrudListPage
+        title="Renewals"
+        columns={columns}
+        fetcher={renewalApi.getRenewals}
+        dataKey="renewals"
+
+        // ➕ Create button only if user has renewal:create
+        createPath={canCreate ? "/renewals/new" : undefined}
+
+        responseAdapter={(response) => ({
+          items: (response.renewals || []).map((item) => ({
+            ...item,
+            deleteFn: canDelete ? renewalApi.deleteRenewal : undefined
+          })),
+          total: response.count || 0
+        })}
+
+        actions={(row) => (
+          <div className="btn-group btn-group-sm">
+
+            {/* 👁 VIEW only if allowed */}
+            {canView && (
+              <Link
+                to={`/renewals/${row.id || row._id}`}
+                className="btn btn-outline-secondary"
+              >
+                View
+              </Link>
+            )}
+
+            {/* Delete handled by deleteFn */}
+          </div>
+        )}
+      />
+    </RequirePermission>
+  );
+};
 
 export default RenewalList;

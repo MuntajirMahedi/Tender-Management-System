@@ -9,6 +9,9 @@ import {
 } from "../../utils/constants";
 import { formatCurrency } from "../../utils/formatters";
 
+import usePermission from "../../hooks/usePermission";
+import RequirePermission from "../../components/RequirePermission";
+
 const columns = [
   {
     key: "planName",
@@ -64,46 +67,65 @@ const filters = [
   }
 ];
 
-const PlanList = () => (
-  <CrudListPage
-    title="Plans"
-    columns={columns}
-    filters={filters}
-    fetcher={planApi.getPlans}
-    dataKey="plans"
-    createPath="/plans/new"
-    
-    responseAdapter={(response) => ({
-      items: (response.plans || []).map((item) => ({
-        ...item,
-        deleteFn: planApi.deletePlan   // ⭐ DELETE ENABLED HERE
-      })),
-      total: response.count || 0
-    })}
-    
-    actions={(row) => (
-      <div className="btn-group btn-group-sm">
-        <Link
-          to={`/plans/${row.id || row._id}`}
-          className="btn btn-outline-secondary"
-        >
-          View
-        </Link>
+const PlanList = () => {
+  const { can } = usePermission();
 
-        <Link
-          to={`/plans/${row.id || row._id}/edit`}
-          className="btn btn-outline-primary"
-        >
-          Edit
-        </Link>
-        
-        {/* DELETE BUTTON (DataTable will auto-bind deleteFn) */}
-        {/* <button className="btn btn-outline-danger">
-          Delete
-        </button> */}
-      </div>
-    )}
-  />
-);
+  const canView = can("plan:view");
+  const canCreate = can("plan:create");
+  const canUpdate = can("plan:update");
+  const canDelete = can("plan:delete");
+
+  return (
+    <RequirePermission permission="plan:view">
+      <CrudListPage
+        title="Plans"
+        columns={columns}
+        filters={filters}
+        fetcher={planApi.getPlans}
+        dataKey="plans"
+
+        // ➕ Create button controlled by permissions
+        createPath={canCreate ? "/plans/new" : undefined}
+
+        responseAdapter={(response) => {
+          const plans = response.plans || [];
+          return {
+            items: plans.map((item) => ({
+              ...item,
+              deleteFn: canDelete ? planApi.deletePlan : undefined
+            })),
+            total: response.count || 0
+          };
+        }}
+
+        actions={(row) => (
+          <div className="btn-group btn-group-sm">
+            {/* 👁 View button (plan:view required) */}
+            {canView && (
+              <Link
+                to={`/plans/${row.id || row._id}`}
+                className="btn btn-outline-secondary"
+              >
+                View
+              </Link>
+            )}
+
+            {/* ✏ Edit button (plan:update required) */}
+            {canUpdate && (
+              <Link
+                to={`/plans/${row.id || row._id}/edit`}
+                className="btn btn-outline-primary"
+              >
+                Edit
+              </Link>
+            )}
+
+            {/* 🗑 Delete handled by deleteFn */}
+          </div>
+        )}
+      />
+    </RequirePermission>
+  );
+};
 
 export default PlanList;

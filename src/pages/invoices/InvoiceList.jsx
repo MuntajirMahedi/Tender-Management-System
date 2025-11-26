@@ -5,6 +5,9 @@ import { PAYMENT_STATUSES } from "../../utils/constants";
 import StatusBadge from "../../components/StatusBadge";
 import { formatCurrency, formatDate } from "../../utils/formatters";
 
+import usePermission from "../../hooks/usePermission";
+import RequirePermission from "../../components/RequirePermission";
+
 const columns = [
   {
     key: "invoiceNumber",
@@ -47,43 +50,63 @@ const filters = [
   }
 ];
 
-const InvoiceList = () => (
-  <CrudListPage
-    title="Invoices"
-    columns={columns}
-    filters={filters}
-    fetcher={invoiceApi.getInvoices}
-    dataKey="invoices"
-    createPath="/invoices/new"
-    
-    responseAdapter={(response) => ({
-      items: (response.invoices || []).map((item) => ({
-        ...item,
-        deleteFn: invoiceApi.deleteInvoice   // ⭐ DELETE ENABLED
-      })),
-      total: response.count || 0
-    })}
+const InvoiceList = () => {
+  const { can } = usePermission();
 
-    actions={(row) => (
-      <div className="btn-group btn-group-sm">
-        <Link
-          to={`/invoices/${row.id || row._id}`}
-          className="btn btn-outline-secondary"
-        >
-          View
-        </Link>
+  const canView = can("invoice:view");
+  const canCreate = can("invoice:create");
+  const canUpdate = can("invoice:update");
+  const canDelete = can("invoice:delete");
 
-        <Link
-          to={`/invoices/${row.id || row._id}/edit`}
-          className="btn btn-outline-primary"
-        >
-          Edit
-        </Link>
+  return (
+    <RequirePermission permission="invoice:view">
+      <CrudListPage
+        title="Invoices"
+        columns={columns}
+        filters={filters}
+        fetcher={invoiceApi.getInvoices}
+        dataKey="invoices"
 
-        {/* ⚡ Delete button automatically handled by DataTable */}
-      </div>
-    )}
-  />
-);
+        // ➕ Create allowed only when invoice:create permission exists
+        createPath={canCreate ? "/invoices/new" : undefined}
+
+        responseAdapter={(response) => ({
+          items: (response.invoices || []).map((item) => ({
+            ...item,
+            deleteFn: canDelete ? invoiceApi.deleteInvoice : undefined
+          })),
+          total: response.count || 0
+        })}
+
+        actions={(row) => (
+          <div className="btn-group btn-group-sm">
+
+            {/* 👁 View invoice only if invoice:view */}
+            {canView && (
+              <Link
+                to={`/invoices/${row.id || row._id}`}
+                className="btn btn-outline-secondary"
+              >
+                View
+              </Link>
+            )}
+
+            {/* ✏ Edit invoice only if invoice:update */}
+            {canUpdate && (
+              <Link
+                to={`/invoices/${row.id || row._id}/edit`}
+                className="btn btn-outline-primary"
+              >
+                Edit
+              </Link>
+            )}
+
+            {/* 🗑 Delete comes from deleteFn */}
+          </div>
+        )}
+      />
+    </RequirePermission>
+  );
+};
 
 export default InvoiceList;

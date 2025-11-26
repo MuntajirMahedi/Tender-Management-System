@@ -4,6 +4,9 @@ import { paymentApi } from "../../api";
 import { PAYMENT_MODES } from "../../utils/constants";
 import { formatCurrency, formatDate } from "../../utils/formatters";
 
+import usePermission from "../../hooks/usePermission";
+import RequirePermission from "../../components/RequirePermission";
+
 const columns = [
   {
     key: "client",
@@ -47,41 +50,63 @@ const filters = [
   { key: "paymentMode", label: "Mode", type: "select", options: PAYMENT_MODES }
 ];
 
-const PaymentList = () => (
-  <CrudListPage
-    title="Payments"
-    columns={columns}
-    filters={filters}
-    fetcher={paymentApi.getPayments}
-    dataKey="payments"
-    createPath="/payments/new"
+const PaymentList = () => {
+  const { can } = usePermission();
 
-    responseAdapter={(response) => ({
-      items: (response.payments || []).map((item) => ({
-        ...item,
-        deleteFn: paymentApi.deletePayment   // ⭐ DELETE BUTTON ENABLED
-      })),
-      total: response.count || 0
-    })}
+  const canView = can("payment:view");
+  const canCreate = can("payment:create");
+  const canUpdate = can("payment:update");
+  const canDelete = can("payment:delete");
 
-    actions={(row) => (
-      <div className="btn-group btn-group-sm">
-        <Link
-          to={`/payments/${row.id || row._id}`}
-          className="btn btn-outline-secondary"
-        >
-          View
-        </Link>
+  return (
+    <RequirePermission permission="payment:view">
+      <CrudListPage
+        title="Payments"
+        columns={columns}
+        filters={filters}
+        fetcher={paymentApi.getPayments}
+        dataKey="payments"
 
-        <Link
-          to={`/payments/${row.id || row._id}/edit`}
-          className="btn btn-outline-primary"
-        >
-          Edit
-        </Link>
-      </div>
-    )}
-  />
-);
+        // ➕ Create button only if payment:create
+        createPath={canCreate ? "/payments/new" : undefined}
+
+        responseAdapter={(response) => ({
+          items: (response.payments || []).map((item) => ({
+            ...item,
+            deleteFn: canDelete ? paymentApi.deletePayment : undefined
+          })),
+          total: response.count || 0
+        })}
+
+        actions={(row) => (
+          <div className="btn-group btn-group-sm">
+
+            {/* 👁 View only if payment:view */}
+            {canView && (
+              <Link
+                to={`/payments/${row.id || row._id}`}
+                className="btn btn-outline-secondary"
+              >
+                View
+              </Link>
+            )}
+
+            {/* ✏ Edit only if payment:update */}
+            {canUpdate && (
+              <Link
+                to={`/payments/${row.id || row._id}/edit`}
+                className="btn btn-outline-primary"
+              >
+                Edit
+              </Link>
+            )}
+
+            {/* Delete auto handled in deleteFn */}
+          </div>
+        )}
+      />
+    </RequirePermission>
+  );
+};
 
 export default PaymentList;

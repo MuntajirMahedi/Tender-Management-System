@@ -52,6 +52,7 @@ const filters = [
 const ActivationList = () => {
   const { can } = usePermission();
 
+  const canView = can("activation:view");
   const canCreate = can("activation:create");
   const canUpdate = can("activation:update");
   const canDelete = can("activation:delete");
@@ -64,27 +65,35 @@ const ActivationList = () => {
         filters={filters}
         fetcher={activationApi.getTasks}
         dataKey="tasks"
-        // show Add only if user has create permission
+
+        // ➕ Add button only if allowed
         createPath={canCreate ? "/activation/new" : undefined}
+
         responseAdapter={(response) => {
           const tasks = response.tasks || [];
           return {
             items: tasks.map((item) => ({
               ...item,
-              // DataTable will only render delete button if deleteFn exists
               deleteFn: canDelete ? activationApi.deleteTask : undefined
             })),
             total: response.count || 0
           };
         }}
+
         actions={(row) => (
           <div className="btn-group btn-group-sm">
-            <Link
-              to={`/activation/${row.id || row._id}`}
-              className="btn btn-outline-secondary"
-            >
-              View
-            </Link>
+
+            {/* 👁 VIEW only if activation:view */}
+            {canView && (
+              <Link
+                to={`/activation/${row.id || row._id}`}
+                className="btn btn-outline-secondary"
+              >
+                View
+              </Link>
+            )}
+
+            {/* ✏ EDIT only if activation:update */}
             {canUpdate && (
               <Link
                 to={`/activation/${row.id || row._id}/edit`}
@@ -93,7 +102,8 @@ const ActivationList = () => {
                 Edit
               </Link>
             )}
-            {/* delete button handled by deleteFn above */}
+
+            {/* 🗑 DELETE handled automatically via deleteFn */}
           </div>
         )}
       />
