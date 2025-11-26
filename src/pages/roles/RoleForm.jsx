@@ -6,6 +6,7 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import PageHeader from "../../components/PageHeader";
 import LoadingScreen from "../../components/LoadingScreen";
 import { permissionApi, roleApi } from "../../api";
+import useAuth from "../../hooks/useAuth"; // ✅ NEW
 
 // Validation schema
 const schema = yup.object({
@@ -17,6 +18,8 @@ const RoleForm = () => {
   const { id } = useParams();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
+
+  const { user, refreshProfile } = useAuth(); // ✅ get current user + refresher
 
   const [permissions, setPermissions] = useState([]);
   const [selectedPermissions, setSelectedPermissions] = useState([]);
@@ -54,6 +57,7 @@ const RoleForm = () => {
           key: role.key,
           description: role.description || ""
         });
+        // role.permissions might be array of Permission docs
         setSelectedPermissions(role.permissions?.map((perm) => perm.code) || []);
       } catch (err) {
         console.error("Unable to load role", err);
@@ -82,26 +86,35 @@ const RoleForm = () => {
   };
 
   // Submit form
-  const onSubmit = async (values) => {
-    try {
-      let roleId = id;
+const onSubmit = async (values) => {
+  try {
+    let roleId = id;
 
-      if (isEdit) {
-        await roleApi.updateRole(roleId, values);
-      } else {
-        // Create new role
-        const { role } = await roleApi.createRole(values);
-        roleId = role._id;
-      }
-
-      // Save permissions
-      await roleApi.updateRolePermissions(roleId, selectedPermissions);
-
-      navigate("/roles");
-    } catch (error) {
-      console.error("Unable to save role", error);
+    if (isEdit) {
+      await roleApi.updateRole(roleId, values);
+    } else {
+      // Create new role
+      const { role } = await roleApi.createRole(values);
+      roleId = role._id;
     }
-  };
+
+    // Save permissions
+    await roleApi.updateRolePermissions(roleId, selectedPermissions);
+
+    // ✅ Always refresh current user profile (permissions)
+    try {
+      await refreshProfile();
+      console.log("[RoleForm] Profile refreshed after role update");
+    } catch (e) {
+      console.error("Failed to refresh profile after role update", e);
+    }
+
+    navigate("/roles");
+  } catch (error) {
+    console.error("Unable to save role", error);
+  }
+};
+
 
   if (loading) return <LoadingScreen label="Loading role..." />;
 
@@ -135,7 +148,11 @@ const RoleForm = () => {
 
           <div className="col-12">
             <label className="form-label">Description (Optional)</label>
-            <textarea className="form-control" rows={3} {...register("description")} />
+            <textarea
+              className="form-control"
+              rows={3}
+              {...register("description")}
+            />
           </div>
         </div>
 
@@ -165,7 +182,11 @@ const RoleForm = () => {
         </div>
 
         <div className="d-flex justify-content-end gap-2">
-          <button type="button" className="btn btn-light" onClick={() => navigate("/roles")}>
+          <button
+            type="button"
+            className="btn btn-light"
+            onClick={() => navigate("/roles")}
+          >
             Cancel
           </button>
 

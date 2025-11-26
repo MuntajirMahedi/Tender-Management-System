@@ -4,6 +4,8 @@ import { activationApi } from "../../api";
 import { ACTIVATION_STATUSES } from "../../utils/constants";
 import StatusBadge from "../../components/StatusBadge";
 import { formatDate } from "../../utils/formatters";
+import usePermission from "../../hooks/usePermission";
+import RequirePermission from "../../components/RequirePermission";
 
 const columns = [
   {
@@ -47,42 +49,56 @@ const filters = [
   { key: "status", label: "Status", type: "select", options: ACTIVATION_STATUSES }
 ];
 
-const ActivationList = () => (
-  <CrudListPage
-    title="Activation Tasks"
-    columns={columns}
-    filters={filters}
-    fetcher={activationApi.getTasks}
-    dataKey="tasks"
-    createPath="/activation/new"
+const ActivationList = () => {
+  const { can } = usePermission();
 
-    // ⭐ DELETE ENABLED FOR EVERY ROW
-    responseAdapter={(response) => ({
-      items: (response.tasks || []).map((item) => ({
-        ...item,
-        deleteFn: activationApi.deleteTask   // ⭐ KEY PART
-      })),
-      total: response.count || 0
-    })}
+  const canCreate = can("activation:create");
+  const canUpdate = can("activation:update");
+  const canDelete = can("activation:delete");
 
-    actions={(row) => (
-      <div className="btn-group btn-group-sm">
-        <Link
-          to={`/activation/${row.id || row._id}`}
-          className="btn btn-outline-secondary"
-        >
-          View
-        </Link>
-        <Link
-          to={`/activation/${row.id || row._id}/edit`}
-          className="btn btn-outline-primary"
-        >
-          Edit
-        </Link>
-        {/* DataTable will auto-render DELETE button */}
-      </div>
-    )}
-  />
-);
+  return (
+    <RequirePermission permission="activation:view">
+      <CrudListPage
+        title="Activation Tasks"
+        columns={columns}
+        filters={filters}
+        fetcher={activationApi.getTasks}
+        dataKey="tasks"
+        // show Add only if user has create permission
+        createPath={canCreate ? "/activation/new" : undefined}
+        responseAdapter={(response) => {
+          const tasks = response.tasks || [];
+          return {
+            items: tasks.map((item) => ({
+              ...item,
+              // DataTable will only render delete button if deleteFn exists
+              deleteFn: canDelete ? activationApi.deleteTask : undefined
+            })),
+            total: response.count || 0
+          };
+        }}
+        actions={(row) => (
+          <div className="btn-group btn-group-sm">
+            <Link
+              to={`/activation/${row.id || row._id}`}
+              className="btn btn-outline-secondary"
+            >
+              View
+            </Link>
+            {canUpdate && (
+              <Link
+                to={`/activation/${row.id || row._id}/edit`}
+                className="btn btn-outline-primary"
+              >
+                Edit
+              </Link>
+            )}
+            {/* delete button handled by deleteFn above */}
+          </div>
+        )}
+      />
+    </RequirePermission>
+  );
+};
 
 export default ActivationList;
