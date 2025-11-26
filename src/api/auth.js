@@ -9,9 +9,11 @@ export const register = async (payload) =>
 
 export const getProfile = async () => unwrap(await api.get("/auth/me"));
 
+// ✔ Backend expects: POST /auth/forgot-password
 export const requestPasswordReset = async (payload) =>
   unwrap(await api.post("/auth/forgot-password", payload));
 
-export const resetPassword = async (token, payload) =>
-  unwrap(await api.post(`/auth/reset-password/${token}`, payload));
-
+// ❗ No token in URL
+// ✔ Backend expects: POST /auth/reset-password  (BODY only)
+export const resetPassword = async (payload) =>
+  unwrap(await api.post("/auth/reset-password", payload));

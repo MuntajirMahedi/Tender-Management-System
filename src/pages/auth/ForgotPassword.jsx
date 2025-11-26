@@ -11,6 +11,7 @@ const schema = yup.object({
 
 const ForgotPassword = () => {
   const [status, setStatus] = useState(null);
+
   const {
     register,
     handleSubmit,
@@ -22,32 +23,51 @@ const ForgotPassword = () => {
 
   const onSubmit = async (values) => {
     try {
-      await authApi.requestPasswordReset(values);
+      const res = await authApi.requestPasswordReset(values);
+
       setStatus({
         type: "success",
-        message:
-          "If the account exists, reset instructions have been sent to your inbox."
+        message: res.message || "OTP sent successfully to your email."
       });
+
+      //  ⭐ Save Email → ResetPage me auto-fill hoga
+      localStorage.setItem("resetEmail", values.email);
+
+      // 1.5s delay then redirect
+      setTimeout(() => {
+        window.location.href = "/reset-password";
+      }, 1500);
+
     } catch (error) {
+      const msg =
+        error?.response?.data?.message ||
+        "Unable to send OTP. Please try again.";
+
       setStatus({
-        type: "warning",
-        message:
-          "Password reset endpoint is not enabled yet. Contact your administrator."
+        type: "danger",
+        message: msg
       });
     }
   };
 
   return (
-    <div className="min-vh-100 d-flex align-items-center justify-content-center" style={{ background: "#eef2ff" }}>
+    <div
+      className="min-vh-100 d-flex align-items-center justify-content-center"
+      style={{ background: "#eef2ff" }}
+    >
       <div className="card shadow" style={{ width: "min(420px, 90%)" }}>
         <div className="card-body p-4">
           <h3>Forgot password</h3>
           <p className="text-muted">
-            Enter your email and we will send you instructions to reset your password.
+            Enter your registered email. We will send OTP for verification.
           </p>
+
           {status && (
-            <div className={`alert alert-${status.type}`}>{status.message}</div>
+            <div className={`alert alert-${status.type}`}>
+              {status.message}
+            </div>
           )}
+
           <form onSubmit={handleSubmit(onSubmit)}>
             <div className="mb-3">
               <label className="form-label">Email address</label>
@@ -57,13 +77,17 @@ const ForgotPassword = () => {
                 {...register("email")}
               />
               {errors.email && (
-                <div className="invalid-feedback">{errors.email.message}</div>
+                <div className="invalid-feedback">
+                  {errors.email.message}
+                </div>
               )}
             </div>
+
             <button className="btn btn-primary w-100" disabled={isSubmitting}>
-              {isSubmitting ? "Submitting..." : "Send instructions"}
+              {isSubmitting ? "Sending..." : "Send OTP"}
             </button>
           </form>
+
           <div className="text-center mt-3">
             <Link to="/login" className="text-decoration-none">
               Back to login
@@ -76,4 +100,3 @@ const ForgotPassword = () => {
 };
 
 export default ForgotPassword;
-

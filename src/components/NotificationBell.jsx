@@ -9,16 +9,15 @@ const NotificationBell = () => {
   const [loading, setLoading] = useState(false);
 
   const loadNotifications = async () => {
-    setLoading(true);
     try {
-      const [{ notifications }, { unreadCount }] = await Promise.all([
-        notificationApi.getNotifications({ limit: 10 }),
-        notificationApi.getUnreadCount()
-      ]);
-      setItems(notifications || []);
-      setUnread(unreadCount || 0);
-    } catch (error) {
-      console.error("Failed to load notifications", error);
+      setLoading(true);
+      const res = await notificationApi.getNotifications({ limit: 10 });
+      const unreadRes = await notificationApi.getUnreadCount();
+
+      setItems(res.notifications || []);
+      setUnread(unreadRes.unreadCount || 0);
+    } catch (err) {
+      console.error("NOTIFICATION ERROR:", err);
     } finally {
       setLoading(false);
     }
@@ -26,24 +25,25 @@ const NotificationBell = () => {
 
   useEffect(() => {
     loadNotifications();
-    const id = setInterval(loadNotifications, 30000);
-    return () => clearInterval(id);
+    const interval = setInterval(loadNotifications, 20000);
+    return () => clearInterval(interval);
   }, []);
 
-  const togglePanel = () => {
-    setOpen((prev) => !prev);
-    if (!open && unread > 0) {
-      notificationApi.markAllRead().then(() => setUnread(0));
+  const togglePanel = async () => {
+    const willOpen = !open;
+    setOpen(willOpen);
+
+    if (!willOpen) return; // closing panel → do nothing
+
+    if (unread > 0) {
+      await notificationApi.markAllRead();
+      setUnread(0);
     }
   };
 
   return (
     <div className="position-relative">
-      <button
-        type="button"
-        className="btn btn-light position-relative"
-        onClick={togglePanel}
-      >
+      <button type="button" className="btn btn-light position-relative" onClick={togglePanel}>
         <i className="bi bi-bell" />
         {unread > 0 && (
           <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
@@ -51,30 +51,29 @@ const NotificationBell = () => {
           </span>
         )}
       </button>
+
       {open && (
         <div className="notifications-panel">
           <div className="d-flex align-items-center justify-content-between mb-2">
             <h6 className="mb-0">Notifications</h6>
-            <button
-              className="btn btn-link btn-sm text-decoration-none"
-              onClick={loadNotifications}
-            >
+            <button className="btn btn-link btn-sm" onClick={loadNotifications}>
               <i className="bi bi-arrow-clockwise me-1" />
               Refresh
             </button>
           </div>
-          {loading && <div className="text-muted small">Loading...</div>}
+
+          {loading && <p className="text-muted small">Loading...</p>}
+
           {!loading && items.length === 0 && (
-            <p className="text-muted small mb-0">You are all caught up!</p>
+            <p className="text-muted small">You are all caught up!</p>
           )}
+
           <div className="list-group list-group-flush">
             {items.map((item) => (
               <div key={item.id} className="list-group-item px-0">
                 <div className="fw-semibold">{item.title}</div>
                 <div className="text-muted small">{item.message}</div>
-                <div className="text-muted small">
-                  {formatDateTime(item.createdAt)}
-                </div>
+                <div className="text-muted small">{formatDateTime(item.createdAt)}</div>
               </div>
             ))}
           </div>
@@ -85,4 +84,3 @@ const NotificationBell = () => {
 };
 
 export default NotificationBell;
-

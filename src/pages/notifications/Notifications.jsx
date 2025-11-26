@@ -7,7 +7,9 @@ const Notifications = () => {
   const [items, setItems] = useState([]);
 
   useEffect(() => {
-    notificationApi.getNotifications().then((res) => setItems(res.notifications || []));
+    notificationApi.getNotifications().then((res) => {
+      setItems(res.notifications || []);
+    });
   }, []);
 
   return (
@@ -38,4 +40,3 @@ const Notifications = () => {
 };
 
 export default Notifications;
-

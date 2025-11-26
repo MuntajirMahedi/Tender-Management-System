@@ -1,21 +1,33 @@
 import api from "./axios";
-import { unwrap } from "./helpers";
 
-export const getNotifications = async (params = {}) =>
-  unwrap(await api.get("/notifications", { params }));
+export const notificationApi = {
+  getNotifications: async (params = {}) => {
+    const res = await api.get("/notifications", { params });
+    return res.data;  // <-- FIX
+  },
 
-export const getUnreadCount = async () =>
-  unwrap(await api.get("/notifications/unread-count"));
+  getUnreadCount: async () => {
+    const res = await api.get("/notifications/unread-count");
+    return res.data;  // <-- FIX
+  },
 
-export const markRead = async (id) =>
-  unwrap(await api.patch(`/notifications/${id}/read`));
+  markRead: async (id) => {
+    const res = await api.patch(`/notifications/${id}/read`);
+    return res.data;
+  },
 
-export const markAllRead = async () =>
-  unwrap(await api.patch("/notifications/read-all"));
+  markAllRead: async () => {
+    const res = await api.patch("/notifications/read-all");
+    return res.data;
+  },
 
-export const markBulkRead = async (ids) =>
-  unwrap(await api.patch("/notifications/read-bulk", { ids }));
+  markBulkRead: async (ids) => {
+    const res = await api.patch("/notifications/read-bulk", { ids });
+    return res.data;
+  },
 
-export const deleteNotification = async (id) =>
-  unwrap(await api.delete(`/notifications/${id}`));
-
+  deleteNotification: async (id) => {
+    const res = await api.delete(`/notifications/${id}`);
+    return res.data;
+  }
+};
