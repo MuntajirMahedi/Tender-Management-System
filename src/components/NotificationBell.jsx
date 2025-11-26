@@ -158,7 +158,7 @@ const NotificationBell = () => {
             {/* header */}
             <div className="d-flex justify-content-between align-items-center mb-3">
               <div className="d-flex align-items-center gap-2">
-                <i className="bi bi-bell-fill text-success fs-4" />
+                <i className="bi bi-bell-fill text-primary fs-4" />
                 <h5 className="mb-0">Notifications</h5>
                 {unread > 0 && (
                   <span className="badge rounded-pill bg-danger">
@@ -203,8 +203,8 @@ const NotificationBell = () => {
                 type="button"
                 className={`btn btn-sm w-50 ${
                   activeTab === "recent"
-                    ? "btn-success text-white"
-                    : "btn-outline-success"
+                    ? "btn-primary text-white"
+                    : "btn-outline-primary"
                 }`}
                 onClick={() => setActiveTab("recent")}
               >
@@ -214,8 +214,8 @@ const NotificationBell = () => {
                 type="button"
                 className={`btn btn-sm w-50 ${
                   activeTab === "all"
-                    ? "btn-success text-white"
-                    : "btn-outline-success"
+                    ? "btn-primary text-white"
+                    : "btn-outline-primary"
                 }`}
                 onClick={() => setActiveTab("all")}
               >
