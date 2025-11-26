@@ -2,6 +2,7 @@
 import CrudListPage from "../common/CrudListPage";
 import { auditApi } from "../../api";
 import { formatDateTime } from "../../utils/formatters";
+import RequirePermission from "../../components/RequirePermission";
 
 const columns = [
   {
@@ -39,18 +40,20 @@ const filters = [
 ];
 
 const AuditLogs = () => (
-  <CrudListPage
-    title="Audit Logs"
-    subtitle="Track every activity performed in the platform"
-    columns={columns}
-    filters={filters}
-    fetcher={auditApi.getAuditLogs}
-    dataKey="logs"
-    responseAdapter={(response) => ({
-      items: response.logs || [],
-      total: response.count || 0
-    })}
-  />
+  <RequirePermission permission="audit:view">
+    <CrudListPage
+      title="Audit Logs"
+      subtitle="Track every activity performed in the platform"
+      columns={columns}
+      filters={filters}
+      fetcher={auditApi.getAuditLogs}
+      dataKey="logs"
+      responseAdapter={(response) => ({
+        items: response.logs || [],
+        total: response.count || 0
+      })}
+    />
+  </RequirePermission>
 );
 
 export default AuditLogs;

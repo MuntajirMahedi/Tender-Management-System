@@ -1,3 +1,4 @@
+// src/context/AuthContext.jsx (or wherever it is)
 import {
   createContext,
   useCallback,
@@ -41,15 +42,15 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  // 🔁 ALWAYS fetch fresh profile from backend when we have a token
   const fetchProfile = useCallback(async () => {
     if (!token) {
       setInitializing(false);
       return;
     }
     try {
-      // authApi.getProfile may return { user } or user object
-      const res = await authApi.getProfile();
-      const profile = res?.user || res;
+      const { user: profile } = await authApi.getProfile(); // /auth/me
+      // backend /auth/me MUST return permissions also
       persistAuth(token, profile);
     } catch (error) {
       console.error("Unable to fetch profile", error);
@@ -59,13 +60,15 @@ export const AuthProvider = ({ children }) => {
     }
   }, [persistAuth, token]);
 
+  // ⬇️ THIS is the important change
   useEffect(() => {
-    if (token && !user) {
-      fetchProfile();
-    } else {
+    if (!token) {
       setInitializing(false);
+      return;
     }
-  }, [fetchProfile, token, user]);
+    // 🚨 Don't check "!user" – always refresh when app loads
+    fetchProfile();
+  }, [fetchProfile, token]);
 
   const login = useCallback(
     async (credentials) => {
@@ -105,6 +108,7 @@ export const AuthProvider = ({ children }) => {
     window.location.replace("/login");
   }, [persistAuth]);
 
+  // can be used manually (we already use it in RoleForm)
   const refreshProfile = useCallback(async () => {
     if (!token) return null;
     const res = await authApi.getProfile();
