@@ -18,4 +18,7 @@ export const markBulkRead = async (ids) =>
 
 export const deleteNotification = async (id) =>
   unwrap(await api.delete(`/notifications/${id}`));
+// 👇 NEW: delete all
+export const deleteAllNotifications = async () =>
+  unwrap(await api.delete("/notifications"));
 

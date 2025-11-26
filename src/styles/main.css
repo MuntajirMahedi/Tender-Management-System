@@ -240,3 +240,30 @@ a {
   }
 }
 
+/* full-screen dim background when notifications drawer is open */
+.notif-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 1040;
+}
+
+/* right-side notification drawer */
+.notif-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: 380px;
+  max-width: 100%;
+  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.15);
+  z-index: 1045;
+  padding: 1.25rem;
+  overflow-y: auto;
+  border-radius: 0;
+}
+
+/* optional slight rounding on cards in drawer */
+.notif-card {
+  border-radius: 14px;
+}
