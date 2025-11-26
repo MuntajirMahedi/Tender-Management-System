@@ -47,7 +47,9 @@ export const AuthProvider = ({ children }) => {
       return;
     }
     try {
-      const { user: profile } = await authApi.getProfile();
+      // authApi.getProfile may return { user } or user object
+      const res = await authApi.getProfile();
+      const profile = res?.user || res;
       persistAuth(token, profile);
     } catch (error) {
       console.error("Unable to fetch profile", error);
@@ -99,15 +101,30 @@ export const AuthProvider = ({ children }) => {
 
   const logout = useCallback(() => {
     persistAuth(null, null);
+    // clear and redirect to login
     window.location.replace("/login");
   }, [persistAuth]);
 
   const refreshProfile = useCallback(async () => {
     if (!token) return null;
-    const { user: profile } = await authApi.getProfile();
+    const res = await authApi.getProfile();
+    const profile = res?.user || res;
     persistAuth(token, profile);
     return profile;
   }, [persistAuth, token]);
+
+  // permission helpers
+  const isOwner = useMemo(() => !!(user && user.role === "owner"), [user]);
+
+  const hasPermission = useCallback(
+    (permissionCode) => {
+      if (!user) return false;
+      if (isOwner) return true; // owner has all permissions
+      const perms = Array.isArray(user.permissions) ? user.permissions : [];
+      return perms.includes(permissionCode);
+    },
+    [user, isOwner]
+  );
 
   const value = useMemo(
     () => ({
@@ -119,13 +136,14 @@ export const AuthProvider = ({ children }) => {
       refreshProfile,
       loading,
       initializing,
-      isAuthenticated: Boolean(token && user)
+      isAuthenticated: Boolean(token && user),
+      isOwner,
+      hasPermission
     }),
-    [token, user, login, register, logout, refreshProfile, loading, initializing]
+    [token, user, login, register, logout, refreshProfile, loading, initializing, isOwner, hasPermission]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuthContext = () => useContext(AuthContext);
-

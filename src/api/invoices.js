@@ -29,3 +29,10 @@ export const updateInvoiceStatus = async (id, payload) =>
 export const deleteInvoice = async (id) =>
   unwrap(await api.delete(`/invoices/${id}`));
 
+export const exportInvoices = async (params = {}) => {
+  const response = await api.get("/invoices/export", {
+    params: buildQueryParams(params),
+    responseType: "blob"
+  });
+  return response.data;
+};

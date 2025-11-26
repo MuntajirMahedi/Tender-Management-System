@@ -5,9 +5,27 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import useAuth from "../../hooks/useAuth";
 
+// ----------------------
+// VALIDATION SCHEMA
+// ----------------------
 const schema = yup.object({
-  identifier: yup.string().required("Email or mobile is required"),
-  password: yup.string().required("Password is required")
+  identifier: yup
+    .string()
+    .trim()
+    .required("Email or mobile is required")
+    .test(
+      "email-or-mobile",
+      "Enter a valid email or a 10-digit mobile number",
+      (value) => {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const mobileRegex = /^[6-9]\d{9}$/; // Indian mobile number
+        return emailRegex.test(value) || mobileRegex.test(value);
+      }
+    ),
+  password: yup
+    .string()
+    .required("Password is required")
+    .min(6, "Password must be at least 6 characters")
 });
 
 const Login = () => {
@@ -17,7 +35,8 @@ const Login = () => {
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting }
+    formState: { errors, isSubmitting },
+    setValue
   } = useForm({
     resolver: yupResolver(schema),
     defaultValues: {
@@ -26,14 +45,21 @@ const Login = () => {
     }
   });
 
+  // Redirect if already logged in
   useEffect(() => {
     if (isAuthenticated) {
       navigate("/dashboard");
     }
   }, [isAuthenticated, navigate]);
 
+  // ----------------------
+  // SUBMIT HANDLER
+  // ----------------------
   const onSubmit = async (values) => {
     try {
+      // sanitize values
+      values.identifier = values.identifier.trim();
+
       await login(values);
       navigate("/dashboard");
     } catch (error) {
@@ -42,7 +68,10 @@ const Login = () => {
   };
 
   return (
-    <div className="min-vh-100 d-flex align-items-center justify-content-center" style={{ background: "#eef2ff" }}>
+    <div
+      className="min-vh-100 d-flex align-items-center justify-content-center"
+      style={{ background: "#eef2ff" }}
+    >
       <div className="card shadow-lg" style={{ width: "min(420px, 90%)" }}>
         <div className="card-body p-4">
           <div className="text-center mb-4">
@@ -52,31 +81,49 @@ const Login = () => {
             <h3>Total Management System</h3>
             <p className="text-muted mb-0">Sign in to continue</p>
           </div>
+
+          {/* ---------------------- */}
+          {/*   FORM START            */}
+          {/* ---------------------- */}
           <form onSubmit={handleSubmit(onSubmit)}>
+            {/* Identifier field */}
             <div className="mb-3">
-              <label className="form-label">Email or mobile</label>
+              <label className="form-label">Email or Mobile</label>
               <input
                 type="text"
+                autoComplete="username"
                 className={`form-control ${errors.identifier ? "is-invalid" : ""}`}
-                placeholder="owner@tms.io"
+                placeholder="owner@tms.io or 9876543210"
                 {...register("identifier")}
+                onBlur={(e) => {
+                  setValue("identifier", e.target.value.trim());
+                }}
               />
               {errors.identifier && (
-                <div className="invalid-feedback">{errors.identifier.message}</div>
+                <div className="invalid-feedback">
+                  {errors.identifier.message}
+                </div>
               )}
             </div>
+
+            {/* Password field */}
             <div className="mb-3">
               <label className="form-label">Password</label>
               <input
                 type="password"
+                autoComplete="current-password"
                 className={`form-control ${errors.password ? "is-invalid" : ""}`}
                 placeholder="••••••••"
                 {...register("password")}
               />
               {errors.password && (
-                <div className="invalid-feedback">{errors.password.message}</div>
+                <div className="invalid-feedback">
+                  {errors.password.message}
+                </div>
               )}
             </div>
+
+            {/* remember + forgot */}
             <div className="d-flex justify-content-between align-items-center mb-3">
               <div className="form-check">
                 <input className="form-check-input" type="checkbox" id="remember" />
@@ -88,11 +135,13 @@ const Login = () => {
                 Forgot password?
               </Link>
             </div>
+
+            {/* Submit button */}
             <button
               className="btn btn-primary w-100"
               disabled={isSubmitting || loading}
             >
-              {isSubmitting || loading ? "Signing in..." : "Sign in"}
+              {isSubmitting || loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
         </div>
@@ -102,4 +151,3 @@ const Login = () => {
 };
 
 export default Login;
-

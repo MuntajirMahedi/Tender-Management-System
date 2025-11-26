@@ -1,3 +1,4 @@
+// src/pages/common/CrudListPage.jsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import usePagination from "../../hooks/usePagination";
@@ -12,6 +13,7 @@ const CrudListPage = ({
   fetcher,
   dataKey,
   createPath,
+  renderCreateButton, // custom create button override
   filters = [],
   actions,
   headerExtras,
@@ -25,6 +27,9 @@ const CrudListPage = ({
   const [search, setSearch] = useState("");
   const [filterValues, setFilterValues] = useState({});
   const debouncedSearch = useDebounce(search, 500);
+
+  // reloadKey triggers reload when updated (used by Delete)
+  const [reloadKey, setReloadKey] = useState(0);
 
   const params = useMemo(
     () => ({
@@ -43,23 +48,38 @@ const CrudListPage = ({
         const response = await fetcher(
           transformParams ? transformParams(params) : params
         );
+
         const adapted = responseAdapter
           ? responseAdapter(response)
           : {
-              items: response[dataKey] || [],
-              total: response.count || response.total || 0
+              items: (response && response[dataKey]) || [],
+              total:
+                (response && (response.count || response.total)) || 0
             };
-        setRecords(adapted.items);
-        setTotal(adapted.total);
+
+        setRecords(adapted.items || []);
+        setTotal(adapted.total || 0);
       } catch (error) {
         console.error(`Failed to load ${title}`, error);
+        setRecords([]);
+        setTotal(0);
       } finally {
         setLoading(false);
       }
     };
-    load();
-  }, [fetcher, params, transformParams, responseAdapter, dataKey, title]);
 
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher, params, transformParams, responseAdapter, dataKey, title, reloadKey]);
+
+  // Listen for global reload events (fired after delete in DataTable)
+  useEffect(() => {
+    const onReload = () => setReloadKey((k) => k + 1);
+    window.addEventListener("reloadList", onReload);
+    return () => window.removeEventListener("reloadList", onReload);
+  }, []);
+
+  // FILTER controls
   const filterControls = filters.map((filter) => {
     if (filter.type === "select") {
       return (
@@ -108,20 +128,28 @@ const CrudListPage = ({
     );
   });
 
+  // create button logic (custom or default)
+  const createButton = (() => {
+    if (typeof renderCreateButton === "function") {
+      return renderCreateButton();
+    }
+    if (createPath) {
+      return (
+        <Link key="create" to={createPath} className="btn btn-primary">
+          <i className="bi bi-plus-circle me-2" />
+          Add {title.slice(0, -1)}
+        </Link>
+      );
+    }
+    return null;
+  })();
+
   return (
     <div>
       <PageHeader
         title={title}
         subtitle={subtitle}
-        actions={[
-          headerExtras,
-          createPath && (
-            <Link key="create" to={createPath} className="btn btn-primary">
-              <i className="bi bi-plus-circle me-2" />
-              Add {title.slice(0, -1)}
-            </Link>
-          )
-        ]}
+        actions={[headerExtras, createButton]}
       />
 
       <div className="d-flex flex-wrap align-items-end gap-3 mb-3">
@@ -134,7 +162,9 @@ const CrudListPage = ({
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
+
         {filterControls}
+
         {Object.keys(filterValues).length > 0 && (
           <button
             className="btn btn-link text-decoration-none"
@@ -163,4 +193,3 @@ const CrudListPage = ({
 };
 
 export default CrudListPage;
-

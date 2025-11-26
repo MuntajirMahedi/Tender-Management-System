@@ -4,16 +4,13 @@ import { formatDateTime } from "../utils/formatters";
 
 const sortNotifications = (list) => {
   return [...(list || [])].sort((a, b) => {
-    // unread first
     if (!!a.isRead === !!b.isRead) {
-      // same read state → newest first
       return new Date(b.createdAt) - new Date(a.createdAt);
     }
-    return a.isRead ? 1 : -1; // read go down
+    return a.isRead ? 1 : -1;
   });
 };
 
-// small helper for "26m ago", "3h ago"
 const getRelativeTime = (dateStr) => {
   if (!dateStr) return "";
   const diffMs = Date.now() - new Date(dateStr).getTime();
@@ -34,7 +31,7 @@ const NotificationBell = () => {
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
-  const [activeTab, setActiveTab] = useState("recent"); // "recent" | "all"
+  const [activeTab, setActiveTab] = useState("recent");
 
   const loadNotifications = async () => {
     setLoading(true);
@@ -59,19 +56,13 @@ const NotificationBell = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const togglePanel = () => {
-    setOpen((prev) => !prev);
-  };
-
-  const closePanel = () => {
-    setOpen(false);
-  };
+  const togglePanel = () => setOpen((prev) => !prev);
+  const closePanel = () => setOpen(false);
 
   const handleMarkAllRead = async () => {
     if (!items.length || unread === 0) return;
     setMarkingAll(true);
 
-    // optimistic: mark all read & resort
     setItems((prev) =>
       sortNotifications(prev.map((n) => ({ ...n, isRead: true })))
     );
@@ -111,7 +102,6 @@ const NotificationBell = () => {
   const handleDelete = async (id) => {
     const target = items.find((n) => n.id === id);
 
-    // optimistic delete
     setItems((prev) => prev.filter((n) => n.id !== id));
     if (target && !target.isRead) {
       setUnread((prev) => Math.max(prev - 1, 0));
@@ -133,10 +123,14 @@ const NotificationBell = () => {
 
   return (
     <div className="position-relative">
-      <button type="button" className="btn btn-light position-relative" onClick={togglePanel}>
+      <button
+        type="button"
+        className="btn btn-light position-relative"
+        onClick={togglePanel}
+      >
         <i className="bi bi-bell" />
         {unread > 0 && (
-          <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+          <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">
             {unread > 99 ? "99+" : unread}
           </span>
         )}
@@ -145,25 +139,19 @@ const NotificationBell = () => {
       {open && (
         <>
           {/* overlay */}
-          <div
-            className="notif-overlay"
-            onClick={closePanel}
-          ></div>
+          <div className="notif-overlay" onClick={closePanel}></div>
 
-          {/* right sidebar drawer */}
+          {/* sidebar */}
           <div
             className="notif-sidebar bg-white"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* header */}
             <div className="d-flex justify-content-between align-items-center mb-3">
               <div className="d-flex align-items-center gap-2">
-                <i className="bi bi-bell-fill text-success fs-4" />
+                <i className="bi bi-bell-fill text-primary fs-4" />
                 <h5 className="mb-0">Notifications</h5>
                 {unread > 0 && (
-                  <span className="badge rounded-pill bg-danger">
-                    {unread}
-                  </span>
+                  <span className="badge rounded-pill bg-primary">{unread}</span>
                 )}
               </div>
               <button
@@ -175,7 +163,6 @@ const NotificationBell = () => {
               </button>
             </div>
 
-            {/* mark all read checkbox */}
             {hasNotifications && (
               <div className="d-flex justify-content-end mb-2">
                 <div className="form-check">
@@ -197,25 +184,26 @@ const NotificationBell = () => {
               </div>
             )}
 
-            {/* tabs */}
+            {/* Tabs */}
             <div className="btn-group w-100 mb-3">
               <button
                 type="button"
                 className={`btn btn-sm w-50 ${
                   activeTab === "recent"
-                    ? "btn-success text-white"
-                    : "btn-outline-success"
+                    ? "btn-primary text-white"
+                    : "btn-outline-primary"
                 }`}
                 onClick={() => setActiveTab("recent")}
               >
                 Recent ({recentCount})
               </button>
+
               <button
                 type="button"
                 className={`btn btn-sm w-50 ${
                   activeTab === "all"
-                    ? "btn-success text-white"
-                    : "btn-outline-success"
+                    ? "btn-primary text-white"
+                    : "btn-outline-primary"
                 }`}
                 onClick={() => setActiveTab("all")}
               >
@@ -223,7 +211,6 @@ const NotificationBell = () => {
               </button>
             </div>
 
-            {/* body */}
             {loading && (
               <div className="text-muted small mb-2">Loading...</div>
             )}
@@ -237,10 +224,7 @@ const NotificationBell = () => {
                 {listToRender.map((item) => {
                   const isUnread = !item.isRead;
                   const initials =
-                    (item.title || "?")
-                      .trim()
-                      .charAt(0)
-                      .toUpperCase() || "?";
+                    (item.title || "?").trim().charAt(0).toUpperCase() || "?";
 
                   return (
                     <div
@@ -250,7 +234,7 @@ const NotificationBell = () => {
                       <div className="card-body py-3 px-3">
                         <div className="d-flex gap-3">
                           <div
-                            className="rounded-circle bg-success text-white d-flex align-items-center justify-content-center flex-shrink-0"
+                            className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center flex-shrink-0"
                             style={{
                               width: 36,
                               height: 36,
@@ -259,6 +243,7 @@ const NotificationBell = () => {
                           >
                             {initials}
                           </div>
+
                           <div className="flex-grow-1">
                             <div className="d-flex justify-content-between align-items-start mb-1">
                               <p
@@ -272,11 +257,11 @@ const NotificationBell = () => {
                                 {getRelativeTime(item.createdAt)}
                               </small>
                             </div>
+
                             <p className="mb-2 text-muted small">
                               {item.message}
                             </p>
 
-                            {/* Actions */}
                             {isUnread ? (
                               <button
                                 type="button"
@@ -299,7 +284,6 @@ const NotificationBell = () => {
                           </div>
                         </div>
 
-                        {/* optional: full date as tiny footer */}
                         <div className="text-muted small mt-1">
                           <i className="bi bi-clock me-1" />
                           {formatDateTime(item.createdAt)}

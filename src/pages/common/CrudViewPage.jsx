@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import PageHeader from "../../components/PageHeader";
 import LoadingScreen from "../../components/LoadingScreen";
 
@@ -10,19 +10,18 @@ const CrudViewPage = ({ title, fetcher, sections = [], actions }) => {
 
   useEffect(() => {
     const load = async () => {
-      if (!fetcher) return;
       setLoading(true);
       try {
-        const response = await fetcher(id);
-        setRecord(response);
-      } catch (error) {
-        console.error("Unable to fetch record", error);
+        const res = await fetcher(id);
+        setRecord(res);
+      } catch (err) {
+        console.error("Failed to load record:", err);
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [fetcher, id]);
+  }, [id, fetcher]);
 
   if (loading || !record) {
     return <LoadingScreen label="Loading details..." />;
@@ -30,31 +29,40 @@ const CrudViewPage = ({ title, fetcher, sections = [], actions }) => {
 
   return (
     <div>
-      <PageHeader title={title} actions={actions?.(record)} />
-      <div className="row g-3">
-        {sections.map((section) => (
-          <div key={section.title} className={section.col || "col-lg-6"}>
-            <div className="table-card h-100">
-              <h6 className="mb-3">{section.title}</h6>
-              <div className="row">
-                {section.fields.map((field) => (
-                  <div key={field.label} className="col-12 mb-3">
+      {/* PAGE HEADER */}
+      <PageHeader
+        title={title}
+        actions={actions ? actions(record) : null}
+      />
+
+      {/* MAIN CARD */}
+      <div className="card shadow-sm mb-4">
+        <div className="card-body">
+
+          {sections.map((section, index) => (
+            <div key={index} className="mb-4 pb-3 border-bottom">
+              <h5 className="text-primary mb-3">{section.title}</h5>
+
+              <div className="row g-4">
+                {section.fields.map((field, i) => (
+                  <div key={i} className="col-md-4 col-sm-6">
                     <div className="text-muted small">{field.label}</div>
-                    <div className="fw-semibold">
+
+                    <div className="fw-semibold mt-1">
                       {field.render
                         ? field.render(record[field.key], record)
-                        : record[field.key] || "NA"}
+                        : record[field.key] || <span className="text-secondary">—</span>}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
-        ))}
+          ))}
+
+        </div>
       </div>
     </div>
   );
 };
 
 export default CrudViewPage;
-

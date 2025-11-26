@@ -32,10 +32,10 @@ const PermissionForm = () => (
     createFn={permissionApi.createPermission}
     updateFn={(id, payload) => permissionApi.updatePermission(id, payload)}
     fetcher={async (id) => {
-      const { permissions } = await permissionApi.getPermissions();
+      const res = await permissionApi.getPermissions();
+      const permissions = res?.permissions || [];
       return permissions.find(
-        (item) =>
-          item._id?.toString() === id || item.id === id
+        (item) => item._id?.toString() === id || item.id === id
       );
     }}
     redirectPath="/permissions"

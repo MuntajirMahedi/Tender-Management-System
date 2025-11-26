@@ -3,15 +3,21 @@ import { Link, useParams } from "react-router-dom";
 import { paymentApi } from "../../api";
 import PageHeader from "../../components/PageHeader";
 import { formatCurrency, formatDate } from "../../utils/formatters";
+import StatusBadge from "../../components/StatusBadge";
+
+const InfoItem = ({ label, value }) => (
+  <div className="mb-3">
+    <div className="text-muted small">{label}</div>
+    <div className="fw-semibold">{value || "—"}</div>
+  </div>
+);
 
 const PaymentView = () => {
   const { id } = useParams();
   const [payment, setPayment] = useState(null);
 
   useEffect(() => {
-    paymentApi
-      .getPayment(id)
-      .then(({ payment }) => setPayment(payment));
+    paymentApi.getPayment(id).then(({ payment }) => setPayment(payment));
   }, [id]);
 
   if (!payment) return <p>Loading...</p>;
@@ -19,54 +25,56 @@ const PaymentView = () => {
   return (
     <div>
       <PageHeader
-        title="Payment details"
+        title={`Payment • ${payment.transactionId || "PAY"}`}
+        subtitle={payment.client?.name || ""}
         actions={[
           <Link
             key="edit"
             to={`/payments/${id}/edit`}
             className="btn btn-outline-primary"
           >
+            <i className="bi bi-pencil me-2" />
             Edit
           </Link>
         ]}
       />
-      <div className="table-card">
-        <div className="row">
-          <div className="col-6">
-            <div className="text-muted small">Client</div>
-            <div className="fw-semibold">{payment.client?.name}</div>
+
+      {/* SECTIONS */}
+      <div className="row g-4">
+        {/* LEFT CARD */}
+        <div className="col-lg-6">
+          <div className="card shadow-sm p-3 h-100">
+            <h6 className="text-primary mb-3">Payment Details</h6>
+
+            <InfoItem
+              label="Amount"
+              value={formatCurrency(payment.amount || 0, "INR")}
+            />
+
+            <InfoItem label="Mode" value={payment.paymentMode} />
+
+            <InfoItem label="Payment Date" value={formatDate(payment.paymentDate)} />
+
+            <InfoItem label="Status" value={<StatusBadge status={payment.status} />} />
+
+            <InfoItem label="Remarks" value={payment.remarks} />
           </div>
-          <div className="col-6">
-            <div className="text-muted small">Plan</div>
-            <div className="fw-semibold">{payment.plan?.planName}</div>
-          </div>
-          <div className="col-4">
-            <div className="text-muted small">Amount</div>
-            <div className="fw-semibold">
-              {formatCurrency(payment.amount || 0, "INR")}
-            </div>
-          </div>
-          <div className="col-4">
-            <div className="text-muted small">Mode</div>
-            <div className="fw-semibold">{payment.paymentMode}</div>
-          </div>
-          <div className="col-4">
-            <div className="text-muted small">Payment Date</div>
-            <div className="fw-semibold">{formatDate(payment.paymentDate)}</div>
-          </div>
-          <div className="col-6">
-            <div className="text-muted small">Bank</div>
-            <div className="fw-semibold">{payment.bankName || "NA"}</div>
-          </div>
-          <div className="col-6">
-            <div className="text-muted small">Transaction ID</div>
-            <div className="fw-semibold">
-              {payment.transactionId || "NA"}
-            </div>
-          </div>
-          <div className="col-12">
-            <div className="text-muted small">Remarks</div>
-            <div className="fw-semibold">{payment.remarks || "—"}</div>
+        </div>
+
+        {/* RIGHT CARD */}
+        <div className="col-lg-6">
+          <div className="card shadow-sm p-3 h-100">
+            <h6 className="text-primary mb-3">Client & Plan</h6>
+
+            <InfoItem label="Client" value={payment.client?.name} />
+
+            <InfoItem label="Plan" value={payment.plan?.planName} />
+
+            <InfoItem label="Plan Type" value={payment.plan?.planType} />
+
+            <InfoItem label="Bank Name" value={payment.bankName} />
+
+            <InfoItem label="Transaction ID" value={payment.transactionId} />
           </div>
         </div>
       </div>
@@ -75,4 +83,3 @@ const PaymentView = () => {
 };
 
 export default PaymentView;
-

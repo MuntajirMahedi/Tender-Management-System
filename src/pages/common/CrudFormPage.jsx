@@ -36,7 +36,10 @@ const CrudFormPage = ({
       setLoading(true);
       try {
         const response = await fetcher(id);
-        reset(response);
+        // fetcher should return object representing the record
+        if (response) {
+          reset(response);
+        }
       } catch (error) {
         console.error(`Unable to load ${title} record`, error);
       } finally {
@@ -44,6 +47,7 @@ const CrudFormPage = ({
       }
     };
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetcher, id, isEdit, reset, title]);
 
   const onSubmit = async (values) => {
@@ -53,6 +57,7 @@ const CrudFormPage = ({
       } else if (!isEdit && createFn) {
         await createFn(values);
       }
+      // navigate back to list after save
       navigate(redirectPath);
     } catch (error) {
       console.error("Unable to save data", error);
@@ -72,10 +77,7 @@ const CrudFormPage = ({
       <form className="form-card" onSubmit={handleSubmit(onSubmit)}>
         <div className="row">
           {fields.map((field) => (
-            <div
-              key={field.name}
-              className={field.col || "col-md-6"}
-            >
+            <div key={field.name} className={field.col || "col-md-6"}>
               {field.render ? (
                 field.render(control)
               ) : (
@@ -110,4 +112,3 @@ const CrudFormPage = ({
 };
 
 export default CrudFormPage;
-

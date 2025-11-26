@@ -1,7 +1,9 @@
+import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { roleApi } from "../../api";
 import PageHeader from "../../components/PageHeader";
+import Can from "../../components/Can";
 
 const RoleView = () => {
   const { id } = useParams();
@@ -18,9 +20,11 @@ const RoleView = () => {
       <PageHeader
         title={`Role • ${role.name}`}
         actions={[
-          <Link key="edit" to={`/roles/${id}/edit`} className="btn btn-outline-primary">
-            Edit
-          </Link>
+          <Can permission="roles.edit" key="edit">
+            <Link to={`/roles/${id}/edit`} className="btn btn-outline-primary">
+              Edit
+            </Link>
+          </Can>
         ]}
       />
       <div className="table-card">
@@ -43,4 +47,3 @@ const RoleView = () => {
 };
 
 export default RoleView;
-

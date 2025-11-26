@@ -1,8 +1,10 @@
+import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { userApi } from "../../api";
 import PageHeader from "../../components/PageHeader";
 import StatusBadge from "../../components/StatusBadge";
+import Can from "../../components/Can";
 
 const UserView = () => {
   const { id } = useParams();
@@ -19,9 +21,11 @@ const UserView = () => {
       <PageHeader
         title={`User • ${user.name}`}
         actions={[
-          <Link key="edit" to={`/users/${id}/edit`} className="btn btn-outline-primary">
-            Edit
-          </Link>
+          <Can permission="users.edit" key="edit">
+            <Link to={`/users/${id}/edit`} className="btn btn-outline-primary">
+              Edit
+            </Link>
+          </Can>
         ]}
       />
       <div className="table-card">
@@ -49,4 +53,3 @@ const UserView = () => {
 };
 
 export default UserView;
-
