@@ -72,14 +72,15 @@ const InquiryView = () => {
           actions={[
             // ✏️ Edit only if allowed
             canUpdate && (
-              <Link
-                key="edit"
-                to={`/inquiries/${id}/edit`}
-                className="btn btn-outline-primary"
-              >
-                Edit
-              </Link>
-            ),
+                            <Link
+                              key="edit"
+                              to={`/inquiries/${id}/edit`}
+                              className="btn btn-outline-primary"
+                            >
+                              <i className="bi bi-pencil-square me-2"></i>
+                              Edit
+                            </Link>
+                          ),
 
             // 🔄 Convert only if allowed and not yet converted
             canConvert &&

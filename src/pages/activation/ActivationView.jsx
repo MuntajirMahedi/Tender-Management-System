@@ -7,6 +7,13 @@ import { formatDate } from "../../utils/formatters";
 import RequirePermission from "../../components/RequirePermission";
 import usePermission from "../../hooks/usePermission";
 
+const InfoItem = ({ label, value }) => (
+  <div className="mb-3">
+    <div className="text-muted small">{label}</div>
+    <div className="fw-semibold">{value || "—"}</div>
+  </div>
+);
+
 const ActivationView = () => {
   const { id } = useParams();
   const [task, setTask] = useState(null);
@@ -25,6 +32,7 @@ const ActivationView = () => {
       <div>
         <PageHeader
           title={`Activation • ${task.taskName}`}
+          subtitle={task.client?.name}
           actions={[
             canEdit && (
               <Link
@@ -32,49 +40,46 @@ const ActivationView = () => {
                 to={`/activation/${id}/edit`}
                 className="btn btn-outline-primary"
               >
-                Edit
+                <i className="bi bi-pencil-square me-2" /> Edit
               </Link>
             )
           ]}
         />
 
-        <div className="table-card">
-          <div className="row">
-            <div className="col-4">
-              <div className="text-muted small">Client</div>
-              <div className="fw-semibold">{task.client?.name || "—"}</div>
-            </div>
+        <div className="row g-4">
 
-            <div className="col-4">
-              <div className="text-muted small">Plan</div>
-              <div className="fw-semibold">{task.plan?.planName || "—"}</div>
-            </div>
+          {/* LEFT CARD - BASIC DETAILS */}
+          <div className="col-lg-6">
+            <div className="card p-3 shadow-sm h-100">
+              <h6 className="mb-3 text-primary">Task Details</h6>
 
-            <div className="col-4">
-              <div className="text-muted small">Status</div>
-              <StatusBadge status={task.status} />
-            </div>
-
-            <div className="col-6">
-              <div className="text-muted small">Assigned To</div>
-              <div className="fw-semibold">{task.assignedTo?.name || "—"}</div>
-            </div>
-
-            <div className="col-3">
-              <div className="text-muted small">Start</div>
-              <div className="fw-semibold">{formatDate(task.startDate)}</div>
-            </div>
-
-            <div className="col-3">
-              <div className="text-muted small">Due</div>
-              <div className="fw-semibold">{formatDate(task.dueDate)}</div>
-            </div>
-
-            <div className="col-12 mt-3">
-              <div className="text-muted small">Notes</div>
-              <div className="fw-semibold">{task.notes || "—"}</div>
+              <InfoItem label="Client" value={task.client?.name} />
+              <InfoItem label="Plan" value={task.plan?.planName} />
+              <InfoItem label="Status" value={<StatusBadge status={task.status} />} />
+              <InfoItem label="Assigned To" value={task.assignedTo?.name} />
+              <InfoItem label="Notes" value={task.notes} />
             </div>
           </div>
+
+          {/* RIGHT CARD - TIMELINE */}
+          <div className="col-lg-6">
+            <div className="card p-3 shadow-sm h-100">
+              <h6 className="mb-3 text-primary">Timeline</h6>
+
+              <InfoItem label="Start Date" value={formatDate(task.startDate)} />
+              <InfoItem label="Due Date" value={formatDate(task.dueDate)} />
+
+              <div className="mt-3">
+                <div className="text-muted small">Progress</div>
+                <div className="fw-semibold">
+                  {task.activationProgress !== undefined
+                    ? `${task.activationProgress}%`
+                    : "—"}
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </RequirePermission>

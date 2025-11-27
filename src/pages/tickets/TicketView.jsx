@@ -5,6 +5,13 @@ import PageHeader from "../../components/PageHeader";
 import StatusBadge from "../../components/StatusBadge";
 import { formatDate, formatDateTime } from "../../utils/formatters";
 
+const InfoItem = ({ label, value }) => (
+  <div className="mb-3">
+    <div className="text-muted small">{label}</div>
+    <div className="fw-semibold">{value || "—"}</div>
+  </div>
+);
+
 const TicketView = () => {
   const { id } = useParams();
   const [ticket, setTicket] = useState(null);
@@ -19,80 +26,72 @@ const TicketView = () => {
     <div>
       <PageHeader
         title={`Ticket • ${ticket.subject}`}
+        subtitle={ticket.client?.name}
         actions={[
           <Link
             key="edit"
             to={`/tickets/${id}/edit`}
             className="btn btn-outline-primary"
           >
-            Edit
+            <i className="bi bi-pencil-square me-2" /> Edit
           </Link>
         ]}
       />
+
+      {/* MAIN DETAILS */}
       <div className="row g-4">
+
+        {/* LEFT: DETAILS */}
         <div className="col-lg-6">
-          <div className="table-card h-100">
-            <h6>Details</h6>
-            <div className="row">
-              <div className="col-6">
-                <div className="text-muted small">Client</div>
-                <div className="fw-semibold">{ticket.client?.name}</div>
-              </div>
-              <div className="col-6">
-                <div className="text-muted small">Plan</div>
-                <div className="fw-semibold">{ticket.plan?.planName || "—"}</div>
-              </div>
-              <div className="col-6">
-                <div className="text-muted small">Type</div>
-                <div className="fw-semibold">{ticket.ticketType}</div>
-              </div>
-              <div className="col-6">
-                <div className="text-muted small">Priority</div>
-                <StatusBadge status={ticket.priority} />
-              </div>
-              <div className="col-6">
-                <div className="text-muted small">Status</div>
-                <StatusBadge status={ticket.status} />
-              </div>
-              <div className="col-6">
-                <div className="text-muted small">Assigned To</div>
-                <div className="fw-semibold">{ticket.assignedTo?.name || "—"}</div>
-              </div>
-              <div className="col-6">
-                <div className="text-muted small">Opened</div>
-                <div className="fw-semibold">{formatDate(ticket.openedDate)}</div>
-              </div>
-              <div className="col-6">
-                <div className="text-muted small">Closed</div>
-                <div className="fw-semibold">
-                  {ticket.closedDate ? formatDate(ticket.closedDate) : "—"}
-                </div>
-              </div>
-            </div>
+          <div className="card p-3 shadow-sm h-100">
+            <h6 className="mb-3 text-primary">Ticket Details</h6>
+
+            <InfoItem label="Client" value={ticket.client?.name} />
+            <InfoItem label="Plan" value={ticket.plan?.planName} />
+            <InfoItem label="Type" value={ticket.ticketType} />
+            <InfoItem label="Priority" value={<StatusBadge status={ticket.priority} />} />
+            <InfoItem label="Status" value={<StatusBadge status={ticket.status} />} />
+            <InfoItem label="Assigned To" value={ticket.assignedTo?.name} />
+            <InfoItem label="Opened" value={formatDate(ticket.openedDate)} />
+            <InfoItem
+              label="Closed"
+              value={ticket.closedDate ? formatDate(ticket.closedDate) : "—"}
+            />
           </div>
         </div>
+
+        {/* RIGHT: DESCRIPTION */}
         <div className="col-lg-6">
-          <div className="table-card h-100">
-            <h6>Description</h6>
-            <p>{ticket.description || "—"}</p>
+          <div className="card p-3 shadow-sm h-100">
+            <h6 className="mb-3 text-primary">Description</h6>
+            <p className="fw-semibold">{ticket.description || "No description"}</p>
           </div>
         </div>
+
       </div>
-      <div className="table-card mt-4">
-        <h6>Timeline</h6>
+
+      {/* TIMELINE */}
+      <div className="card p-3 shadow-sm mt-4">
+        <h6 className="mb-3 text-primary">Timeline</h6>
+
         <ul className="list-group list-group-flush">
-          {ticket.timeline?.map((entry) => (
-            <li key={entry.createdAt} className="list-group-item">
+
+          {ticket.timeline?.map((entry, idx) => (
+            <li key={idx} className="list-group-item px-0">
               <div className="d-flex justify-content-between">
                 <div>
-                  <StatusBadge status={entry.status} /> • {entry.remark || "No remarks"}
+                  <StatusBadge status={entry.status} /> •  
+                  <span className="ms-1">{entry.remark || "No remarks"}</span>
                 </div>
                 <small className="text-muted">{formatDateTime(entry.createdAt)}</small>
               </div>
             </li>
           ))}
-          {!ticket.timeline?.length && (
-            <li className="list-group-item text-muted text-center">No timeline entries</li>
+
+          {(!ticket.timeline || ticket.timeline.length === 0) && (
+            <li className="list-group-item text-muted text-center">
+              No timeline entries
+            </li>
           )}
         </ul>
       </div>
@@ -101,4 +100,3 @@ const TicketView = () => {
 };
 
 export default TicketView;
-
