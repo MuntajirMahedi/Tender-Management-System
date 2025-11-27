@@ -1,4 +1,3 @@
-// src/pages/common/CrudListPage.jsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import usePagination from "../../hooks/usePagination";
@@ -13,7 +12,7 @@ const CrudListPage = ({
   fetcher,
   dataKey,
   createPath,
-  renderCreateButton, // custom create button override
+  renderCreateButton,
   filters = [],
   actions,
   headerExtras,
@@ -28,7 +27,6 @@ const CrudListPage = ({
   const [filterValues, setFilterValues] = useState({});
   const debouncedSearch = useDebounce(search, 500);
 
-  // reloadKey triggers reload when updated (used by Delete)
   const [reloadKey, setReloadKey] = useState(0);
 
   const params = useMemo(
@@ -36,7 +34,7 @@ const CrudListPage = ({
       page,
       limit: pageSize,
       search: debouncedSearch,
-      ...filterValues
+      ...filterValues,
     }),
     [page, pageSize, debouncedSearch, filterValues]
   );
@@ -53,14 +51,13 @@ const CrudListPage = ({
           ? responseAdapter(response)
           : {
               items: (response && response[dataKey]) || [],
-              total:
-                (response && (response.count || response.total)) || 0
+              total: response?.count || response?.total || 0,
             };
 
-        setRecords(adapted.items || []);
-        setTotal(adapted.total || 0);
-      } catch (error) {
-        console.error(`Failed to load ${title}`, error);
+        setRecords(adapted.items);
+        setTotal(adapted.total);
+      } catch (err) {
+        console.error(`Failed to load ${title}`, err);
         setRecords([]);
         setTotal(0);
       } finally {
@@ -69,73 +66,66 @@ const CrudListPage = ({
     };
 
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetcher, params, transformParams, responseAdapter, dataKey, title, reloadKey]);
+  }, [params, fetcher, transformParams, responseAdapter, dataKey, title, reloadKey]);
 
-  // Listen for global reload events (fired after delete in DataTable)
   useEffect(() => {
     const onReload = () => setReloadKey((k) => k + 1);
     window.addEventListener("reloadList", onReload);
     return () => window.removeEventListener("reloadList", onReload);
   }, []);
 
-  // FILTER controls
+  // Filters UI
   const filterControls = filters.map((filter) => {
-    if (filter.type === "select") {
-      return (
-        <div key={filter.key}>
-          <label className="form-label text-muted small mb-1">
-            {filter.label}
-          </label>
+    const value = filterValues[filter.key] || "";
+
+    return (
+      <div key={filter.key} className="flex-grow-1" style={{ minWidth: 160 }}>
+        <label className="form-label text-muted small mb-1">
+          {filter.label}
+        </label>
+
+        {filter.type === "select" ? (
           <select
             className="form-select"
-            value={filterValues[filter.key] || ""}
-            onChange={(event) =>
+            value={value}
+            onChange={(e) =>
               setFilterValues((prev) => ({
                 ...prev,
-                [filter.key]: event.target.value || undefined
+                [filter.key]: e.target.value || undefined,
               }))
             }
           >
             <option value="">All</option>
-            {filter.options.map((option) => (
-              <option key={option.value || option} value={option.value || option}>
-                {option.label || option}
+            {filter.options?.map((opt) => (
+              <option key={opt.value || opt} value={opt.value || opt}>
+                {opt.label || opt}
               </option>
             ))}
           </select>
-        </div>
-      );
-    }
-
-    return (
-      <div key={filter.key}>
-        <label className="form-label text-muted small mb-1">
-          {filter.label}
-        </label>
-        <input
-          className="form-control"
-          placeholder={filter.placeholder}
-          value={filterValues[filter.key] || ""}
-          onChange={(event) =>
-            setFilterValues((prev) => ({
-              ...prev,
-              [filter.key]: event.target.value || undefined
-            }))
-          }
-        />
+        ) : (
+          <input
+            className="form-control"
+            value={value}
+            placeholder={filter.placeholder}
+            onChange={(e) =>
+              setFilterValues((prev) => ({
+                ...prev,
+                [filter.key]: e.target.value || undefined,
+              }))
+            }
+          />
+        )}
       </div>
     );
   });
 
-  // create button logic (custom or default)
+  // Create button
   const createButton = (() => {
-    if (typeof renderCreateButton === "function") {
-      return renderCreateButton();
-    }
+    if (typeof renderCreateButton === "function") return renderCreateButton();
+
     if (createPath) {
       return (
-        <Link key="create" to={createPath} className="btn btn-primary">
+        <Link to={createPath} className="btn btn-primary">
           <i className="bi bi-plus-circle me-2" />
           Add {title.slice(0, -1)}
         </Link>
@@ -152,29 +142,45 @@ const CrudListPage = ({
         actions={[headerExtras, createButton]}
       />
 
-      <div className="d-flex flex-wrap align-items-end gap-3 mb-3">
-        <div style={{ minWidth: 220 }}>
-          <label className="form-label text-muted small mb-1">Search</label>
-          <input
-            className="form-control"
-            placeholder={`Search ${title.toLowerCase()}`}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
+      {/* FILTER BAR */}
+      <div className="card shadow-sm mb-4">
+        <div className="card-body">
+          <div className="row g-3 align-items-end">
+
+            {/* Search */}
+            <div className="col-lg-3 col-md-4 col-sm-6">
+              <label className="form-label text-muted small mb-1">Search</label>
+              <input
+                className="form-control"
+                placeholder={`Search ${title.toLowerCase()}`}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            {/* Dynamic Filters */}
+            {filters.length > 0 && (
+              <div className="col-12 d-flex flex-wrap gap-3">
+                {filterControls}
+              </div>
+            )}
+
+            {/* Clear filters */}
+            {Object.keys(filterValues).length > 0 && (
+              <div className="col-12">
+                <button
+                  className="btn btn-link text-decoration-none p-0"
+                  onClick={() => setFilterValues({})}
+                >
+                  Clear filters
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-
-        {filterControls}
-
-        {Object.keys(filterValues).length > 0 && (
-          <button
-            className="btn btn-link text-decoration-none"
-            onClick={() => setFilterValues({})}
-          >
-            Clear filters
-          </button>
-        )}
       </div>
 
+      {/* MAIN TABLE */}
       <DataTable
         columns={columns}
         data={records}
@@ -185,7 +191,7 @@ const CrudListPage = ({
           pageSize,
           total,
           onPageChange: setPage,
-          onPageSizeChange: setPageSize
+          onPageSizeChange: setPageSize,
         }}
       />
     </div>
