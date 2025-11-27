@@ -8,13 +8,27 @@ import {
   INQUIRY_STATUSES
 } from "../../utils/constants";
 
-// Validation: only backend required fields
+// ⭐ VALIDATION SCHEMA (as per your requirement)
 const schema = yup.object({
   name: yup.string().required("Prospect name is required"),
+
+  email: yup
+    .string()
+    .email("Enter a valid email")
+    .required("Email is required"),
+
   mobile: yup
     .string()
     .required("Mobile number is required")
-    .matches(/^[0-9]{10}$/, "Enter valid 10-digit mobile")
+    .matches(/^[0-9]{10}$/, "Enter valid 10-digit mobile"),
+
+  assignedTo: yup.string().required("Assigned To is required"),
+
+  nextFollowUpDate: yup.string().required("Next Follow-Up date is required"),
+
+  interestLevel: yup.string().required("Interest Level is required"),
+
+  status: yup.string().required("Status is required")
 });
 
 // Default values
@@ -51,45 +65,52 @@ const InquiryForm = () => {
     [users]
   );
 
-  // Fields definition
+  // ⭐ UPDATED FIELDS (required + optional)
   const fields = [
-  { name: "name", label: "Prospect Name *" },
-  { name: "companyName", label: "Company (Optional)" },
-  { name: "mobile", label: "Mobile *" },
-  { name: "email", label: "Email (Optional)", type: "email" },
-  { name: "source", label: "Source (Optional)" },
+    { name: "name", label: "Prospect Name *" },
 
-  {
-    name: "interestLevel",
-    label: "Interest Level (Default: Unknown)",
-    type: "select",
-    options: INQUIRY_INTEREST_LEVELS
-  },
-  {
-    name: "status",
-    label: "Status (Default: New)",
-    type: "select",
-    options: INQUIRY_STATUSES
-  },
-  {
-    name: "assignedTo",
-    label: "Assigned To (Optional)",
-    type: "select",
-    options: userOptions
-  },
-  {
-    name: "nextFollowUpDate",
-    label: "Next Follow-Up (Optional)",
-    type: "date"
-  },
-  {
-    name: "remarks",
-    label: "Remarks (Optional)",
-    isTextArea: true,
-    col: "col-12"
-  }
-];
+    { name: "companyName", label: "Company (Optional)" },
 
+    { name: "mobile", label: "Mobile *" },
+
+    { name: "email", label: "Email *", type: "email" },
+
+    { name: "source", label: "Source (Optional)" },
+
+    {
+      name: "interestLevel",
+      label: "Interest Level *",
+      type: "select",
+      options: INQUIRY_INTEREST_LEVELS
+    },
+
+    {
+      name: "status",
+      label: "Status *",
+      type: "select",
+      options: INQUIRY_STATUSES
+    },
+
+    {
+      name: "assignedTo",
+      label: "Assigned To *",
+      type: "select",
+      options: userOptions
+    },
+
+    {
+      name: "nextFollowUpDate",
+      label: "Next Follow-Up *",
+      type: "date"
+    },
+
+    {
+      name: "remarks",
+      label: "Remarks (Optional)",
+      isTextArea: true,
+      col: "col-12"
+    }
+  ];
 
   return (
     <CrudFormPage

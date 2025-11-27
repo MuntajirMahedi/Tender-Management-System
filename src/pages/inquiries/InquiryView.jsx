@@ -68,6 +68,7 @@ const InquiryView = () => {
     <RequirePermission permission="inquiry:view">
       <div>
         <PageHeader
+        
           title={`Inquiry • ${inquiry.name}`}
           actions={[
             // ✏️ Edit only if allowed
@@ -254,3 +255,4 @@ const InquiryView = () => {
 };
 
 export default InquiryView;
+                              
