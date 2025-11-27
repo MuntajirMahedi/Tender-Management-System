@@ -6,35 +6,49 @@
   --tms-light: #f5f7fb;
 }
 
+/* RESET */
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
-    "Helvetica Neue", sans-serif;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system,
+    BlinkMacSystemFont, "Helvetica Neue", sans-serif;
   background: var(--tms-light);
   color: #1f2a37;
+  overflow-x: hidden;
 }
 
 a {
   text-decoration: none;
 }
 
+/* ================================
+   MAIN APP LAYOUT
+================================ */
 .app-shell {
   display: flex;
-  min-height: 100vh;
-  background: var(--tms-light);
+  height: 100vh;
+  overflow: hidden;
 }
 
+/* ================================
+   SIDEBAR
+================================ */
 .sidebar {
   width: 250px;
   background: var(--tms-sidebar-bg);
   color: #fff;
   display: flex;
   flex-direction: column;
-  transition: width 0.3s ease;
+  height: 100vh;
+  overflow-y: auto;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2000;
+  transition: transform 0.35s ease;
 }
 
 .sidebar .brand {
@@ -47,7 +61,6 @@ a {
 .sidebar-nav {
   flex: 1;
   padding: 1rem 0.75rem;
-  overflow-y: auto;
 }
 
 .sidebar-nav a {
@@ -67,17 +80,24 @@ a {
   color: #fff;
 }
 
-.sidebar-nav .nav-child {
+.nav-child {
   padding-left: 2.3rem;
   font-size: 0.9rem;
 }
 
+/* ================================
+   MAIN CONTENT AREA
+================================ */
 .main-content {
-  flex: 1;
+  margin-left: 250px;
+  width: calc(100% - 250px);
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
+/* Topbar */
 .topbar {
   background: #fff;
   padding: 0.9rem 1.5rem;
@@ -85,9 +105,10 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 50;
 }
 
 .topbar .user-chip {
@@ -99,11 +120,17 @@ a {
   border-radius: 999px;
 }
 
+/* Scrollable content */
 .content-wrapper {
-  padding: 1.5rem;
   flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+  background: var(--tms-light);
 }
 
+/* ================================
+   CARDS / GRID / TABLES
+================================ */
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -115,19 +142,6 @@ a {
   border-radius: 1rem;
   padding: 1rem;
   box-shadow: 0 10px 30px rgba(15, 35, 95, 0.07);
-  position: relative;
-  overflow: hidden;
-}
-
-.summary-card .icon-pill {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  color: #fff;
 }
 
 .summary-card .value {
@@ -136,22 +150,7 @@ a {
   margin: 0.4rem 0;
 }
 
-.summary-card .trend {
-  font-size: 0.9rem;
-  color: #22c55e;
-}
-
-.summary-card .trend.negative {
-  color: #ef4444;
-}
-
-.chart-card {
-  background: #fff;
-  border-radius: 1rem;
-  padding: 1.5rem;
-  box-shadow: 0 10px 25px rgba(15, 35, 95, 0.07);
-}
-
+/* Table card */
 .table-card {
   background: #fff;
   border-radius: 1rem;
@@ -160,13 +159,10 @@ a {
 }
 
 .table-card table {
-  margin-bottom: 0;
+  margin: 0;
 }
 
-.badge {
-  font-weight: 500;
-}
-
+/* Buttons */
 .btn-primary {
   background-color: var(--tms-primary);
   border-color: var(--tms-primary);
@@ -177,6 +173,7 @@ a {
   border-color: var(--tms-primary-dark);
 }
 
+/* Filter Chips */
 .filter-chip {
   border: 1px solid #e0e7ff;
   padding: 0.35rem 0.75rem;
@@ -187,6 +184,7 @@ a {
   margin-right: 0.4rem;
 }
 
+/* Form Card */
 .form-card {
   background: #fff;
   border-radius: 1rem;
@@ -194,6 +192,9 @@ a {
   box-shadow: 0 8px 25px rgba(15, 35, 95, 0.07);
 }
 
+/* ================================
+   DELETE MODAL
+================================ */
 .delete-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -212,6 +213,9 @@ a {
   box-shadow: 0 25px 60px rgba(15, 35, 95, 0.2);
 }
 
+/* ================================
+   NOTIFICATION PANEL
+================================ */
 .notifications-panel {
   position: absolute;
   right: 10px;
@@ -224,31 +228,9 @@ a {
   padding: 1rem;
 }
 
-@media (max-width: 992px) {
-  .sidebar {
-    position: fixed;
-    z-index: 100;
-    transform: translateX(-100%);
-  }
-
-  .sidebar.open {
-    transform: translateX(0);
-  }
-
-  .main-content {
-    margin-left: 0;
-  }
-}
-
-/* full-screen dim background when notifications drawer is open */
-.notif-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.25);
-  z-index: 1040;
-}
-
-/* right-side notification drawer */
+/* ================================
+   NOTIFICATION SIDEBAR (RIGHT)
+================================ */
 .notif-sidebar {
   position: fixed;
   top: 0;
@@ -257,13 +239,56 @@ a {
   width: 380px;
   max-width: 100%;
   box-shadow: -2px 0 12px rgba(0, 0, 0, 0.15);
-  z-index: 1045;
+  z-index: 3000;
   padding: 1.25rem;
+  background: #fff;
   overflow-y: auto;
-  border-radius: 0;
 }
 
-/* optional slight rounding on cards in drawer */
+/* Drawer card */
 .notif-card {
   border-radius: 14px;
+}
+
+/* ================================
+   MOBILE RESPONSIVE
+================================ */
+@media (max-width: 992px) {
+  /* Sidebar hidden on mobile */
+  .sidebar {
+    transform: translateX(-100%);
+    width: 260px;
+  }
+
+  /* Sidebar open on mobile */
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  /* Main content full width */
+  .main-content {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  /* Disable scroll when sidebar open */
+  body.sidebar-open {
+    overflow: hidden;
+  }
+}
+
+/* Overlay when sidebar active */
+.mobile-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1500;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+.mobile-overlay.active {
+  opacity: 1;
+  visibility: visible;
 }

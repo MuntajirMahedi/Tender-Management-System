@@ -11,6 +11,9 @@ import { formatDate } from "../../utils/formatters";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
 
+/* -----------------------------------
+      TABLE COLUMNS
+----------------------------------- */
 const columns = [
   {
     key: "name",
@@ -21,7 +24,7 @@ const columns = [
         <div className="fw-semibold">{value}</div>
         <div className="text-muted small">{row.companyName || "—"}</div>
       </div>
-    )
+    ),
   },
   {
     key: "contact",
@@ -29,41 +32,47 @@ const columns = [
     dataIndex: "mobile",
     render: (value, row) => (
       <div>
-        <div>{value}</div>
+        <div>{value || "—"}</div>
         <div className="text-muted small">{row.email || "NA"}</div>
       </div>
-    )
+    ),
   },
   {
     key: "status",
     label: "Status",
     dataIndex: "status",
-    render: (value) => <StatusBadge status={value} />
+    render: (value) => <StatusBadge status={value} />,
   },
   {
     key: "interestLevel",
     label: "Interest",
-    dataIndex: "interestLevel"
+    dataIndex: "interestLevel",
   },
   {
     key: "assignedTo",
     label: "Assigned",
     dataIndex: "assignedTo",
-    render: (value) => value?.name || "Unassigned"
+    render: (value) => value?.name || "Unassigned",
   },
   {
     key: "nextFollowUpDate",
     label: "Next follow-up",
     dataIndex: "nextFollowUpDate",
-    render: (value) => formatDate(value)
-  }
+    render: (value) => formatDate(value),
+  },
 ];
 
+/* -----------------------------------
+      FILTERS
+----------------------------------- */
 const filters = [
   { key: "status", label: "Status", type: "select", options: INQUIRY_STATUSES },
-  { key: "interestLevel", label: "Interest", type: "select", options: INQUIRY_INTEREST_LEVELS }
+  { key: "interestLevel", label: "Interest", type: "select", options: INQUIRY_INTEREST_LEVELS },
 ];
 
+/* -----------------------------------
+      MAIN COMPONENT
+----------------------------------- */
 const InquiryList = () => {
   const { can } = usePermission();
 
@@ -80,46 +89,48 @@ const InquiryList = () => {
         fetcher={inquiryApi.getInquiries}
         dataKey="inquiries"
 
-        // ➕ Create button only if user has inquiry:create
+        /* Create button — only for users with permission */
         createPath={canCreate ? "/inquiries/new" : undefined}
 
         filters={filters}
 
-        responseAdapter={(response) => {
-          const inquiries = response.inquiries || [];
+        responseAdapter={(resp) => {
+          const list = resp?.inquiries || [];
+
           return {
-            items: inquiries.map((item) => ({
+            items: list.map((item) => ({
               ...item,
-              deleteFn: canDelete ? inquiryApi.deleteInquiry : undefined
+              id: item.id || item._id, // ensure consistent ID
+              deleteFn: canDelete ? inquiryApi.deleteInquiry : undefined,
             })),
-            total: response.count || 0
+            total: resp?.count || list.length || 0,
           };
         }}
 
         actions={(row) => (
           <div className="btn-group btn-group-sm">
 
-            {/* 👁 View only if inquiry:view */}
+            {/* VIEW */}
             {canView && (
               <Link
-                to={`/inquiries/${row.id || row._id}`}
+                to={`/inquiries/${row.id}`}
                 className="btn btn-outline-secondary"
               >
                 View
               </Link>
             )}
 
-            {/* ✏ Edit only if inquiry:update */}
+            {/* EDIT */}
             {canUpdate && (
               <Link
-                to={`/inquiries/${row.id || row._id}/edit`}
+                to={`/inquiries/${row.id}/edit`}
                 className="btn btn-outline-primary"
               >
                 Edit
               </Link>
             )}
 
-            {/* 🗑 Delete handled in deleteFn */}
+            {/* DELETE → handled automatically via deleteFn */}
           </div>
         )}
       />
