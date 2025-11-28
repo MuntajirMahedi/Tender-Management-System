@@ -25,12 +25,12 @@ const Profile = () => {
     { label: "Last Login", value: user.lastLogin },
     { label: "Created At", value: new Date(user.createdAt).toLocaleString() },
     { label: "Updated At", value: new Date(user.updatedAt).toLocaleString() },
-    {
-      label: "Permissions",
-      value: Array.isArray(user.permissions)
-        ? user.permissions.join(", ")
-        : "",
-    },
+    // {
+    //   label: "Permissions",
+    //   value: Array.isArray(user.permissions)
+    //     ? user.permissions.join(", ")
+    //     : "",
+    // },
   ];
 
   return (

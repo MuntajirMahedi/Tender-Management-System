@@ -6,6 +6,7 @@ import { clientApi } from "../../api";
 import { CLIENT_STATUSES } from "../../utils/constants";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
+import { toast } from "react-toastify";
 
 const columns = [
   {
@@ -47,17 +48,11 @@ const columns = [
     label: "Status",
     dataIndex: "status",
     render: (value) => <StatusBadge status={value} />
-  },
-  {
-    key: "city",
-    label: "City",
-    dataIndex: "city"
   }
 ];
 
 const filters = [
-  { key: "status", label: "Status", type: "select", options: CLIENT_STATUSES },
-  { key: "city", label: "City", type: "text", placeholder: "City" }
+  { key: "status", label: "Status", type: "select", options: CLIENT_STATUSES }
 ];
 
 const ClientList = () => {
@@ -69,30 +64,44 @@ const ClientList = () => {
   const canDelete = can("client:delete");
 
   return (
-    // 🔒 If user has no client:view, whole page is hidden / blocked
     <RequirePermission permission="client:view">
       <CrudListPage
         title="Clients"
         columns={columns}
         fetcher={clientApi.getClients}
         dataKey="clients"
-        // ➕ Add button only if user has client:create
         createPath={canCreate ? "/clients/new" : undefined}
         filters={filters}
-        responseAdapter={(response) => {
+        responseAdapter={(response, reload) => {
           const clients = response.clients || [];
+
           return {
             items: clients.map((item) => ({
               ...item,
-              // 🗑️ Delete only available if user has client:delete
-              deleteFn: canDelete ? clientApi.deleteClient : undefined
+
+              deleteFn: canDelete
+                ? async () => {
+                 
+
+                    try {
+                      await clientApi.deleteClient(item._id || item.id);
+                      toast.success(`Client "${item.name}" deleted successfully`);
+                    } catch (err) {
+                      const msg =
+                        err?.response?.data?.message ||
+                        err?.message ||
+                        "Failed to delete client";
+                      toast.error(msg);
+                      throw err;
+                    }
+                  }
+                : undefined
             })),
             total: response.count || 0
           };
         }}
         actions={(row) => (
           <div className="btn-group btn-group-sm">
-            {/* 👁 View button controlled by client:view */}
             {canView && (
               <Link
                 to={`/clients/${row.id || row._id}`}
@@ -102,7 +111,6 @@ const ClientList = () => {
               </Link>
             )}
 
-            {/* ✏️ Edit button controlled by client:update */}
             {canUpdate && (
               <Link
                 to={`/clients/${row.id || row._id}/edit`}
@@ -111,7 +119,6 @@ const ClientList = () => {
                 Edit
               </Link>
             )}
-            {/* 🗑 Delete button comes from deleteFn above */}
           </div>
         )}
       />

@@ -1,3 +1,4 @@
+// src/pages/common/CrudListPage.jsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import usePagination from "../../hooks/usePagination";
@@ -17,7 +18,9 @@ const CrudListPage = ({
   actions,
   headerExtras,
   transformParams,
-  responseAdapter
+  responseAdapter,
+  // ✅ NEW: allow page to provide its own search control
+  customSearchControl
 }) => {
   const { page, pageSize, setPage, setPageSize } = usePagination();
   const [records, setRecords] = useState([]);
@@ -33,7 +36,7 @@ const CrudListPage = ({
     () => ({
       page,
       limit: pageSize,
-      search: debouncedSearch,
+      search: debouncedSearch, // PlanList will override/remove this
       ...filterValues,
     }),
     [page, pageSize, debouncedSearch, filterValues]
@@ -149,13 +152,22 @@ const CrudListPage = ({
 
             {/* Search */}
             <div className="col-lg-3 col-md-4 col-sm-6">
-              <label className="form-label text-muted small mb-1">Search</label>
-              <input
-                className="form-control"
-                placeholder={`Search ${title.toLowerCase()}`}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+              {customSearchControl ? (
+                // ✅ Use custom search if provided (like in PlanList)
+                customSearchControl
+              ) : (
+                <>
+                  <label className="form-label text-muted small mb-1">
+                    Search
+                  </label>
+                  <input
+                    className="form-control"
+                    placeholder={`Search ${title.toLowerCase()}`}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </>
+              )}
             </div>
 
             {/* Dynamic Filters */}

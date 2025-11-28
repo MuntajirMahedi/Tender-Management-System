@@ -123,9 +123,7 @@ const Notifications = () => {
 
   const handleDeleteAll = async () => {
     if (!items.length) return;
-    if (!window.confirm("Delete all notifications? This cannot be undone.")) {
-      return;
-    }
+
     setBulkLoading(true);
     try {
       if (notificationApi.deleteAllNotifications) {

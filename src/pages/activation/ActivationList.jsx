@@ -1,3 +1,5 @@
+// src/pages/activation/ActivationList.jsx
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import CrudListPage from "../common/CrudListPage";
 import { activationApi } from "../../api";
@@ -6,6 +8,8 @@ import StatusBadge from "../../components/StatusBadge";
 import { formatDate } from "../../utils/formatters";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
+import { toast } from "react-toastify";
+import useDebounce from "../../hooks/useDebounce";
 
 const columns = [
   {
@@ -57,6 +61,23 @@ const ActivationList = () => {
   const canUpdate = can("activation:update");
   const canDelete = can("activation:delete");
 
+  // 🔍 Local search (inside this file only)
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
+
+  // Put our search box into CrudListPage's search slot
+  const customSearchControl = (
+    <>
+      <label className="form-label text-muted small mb-1">Search</label>
+      <input
+        className="form-control"
+        placeholder="Search by task, client, plan, owner or status"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+    </>
+  );
+
   return (
     <RequirePermission permission="activation:view">
       <CrudListPage
@@ -65,24 +86,61 @@ const ActivationList = () => {
         filters={filters}
         fetcher={activationApi.getTasks}
         dataKey="tasks"
-
+        customSearchControl={customSearchControl}
         // ➕ Add button only if allowed
         createPath={canCreate ? "/activation/new" : undefined}
-
-        responseAdapter={(response) => {
+        // ✅ Search + delete with toast
+        responseAdapter={(response, reload) => {
           const tasks = response.tasks || [];
+
+          const term = debouncedSearch.trim().toLowerCase();
+
+          const filteredTasks = term
+            ? tasks.filter((t) => {
+                const taskName = (t.taskName || "").toLowerCase();
+                const clientName = (t.client?.name || "").toLowerCase();
+                const planName = (t.plan?.planName || "").toLowerCase();
+                const ownerName = (t.assignedTo?.name || "").toLowerCase();
+                const status = (t.status || "").toLowerCase();
+
+                return (
+                  taskName.includes(term) ||
+                  clientName.includes(term) ||
+                  planName.includes(term) ||
+                  ownerName.includes(term) ||
+                  status.includes(term)
+                );
+              })
+            : tasks;
+
           return {
-            items: tasks.map((item) => ({
+            items: filteredTasks.map((item) => ({
               ...item,
-              deleteFn: canDelete ? activationApi.deleteTask : undefined
+              deleteFn: canDelete
+                ? async () => {
+
+
+                    try {
+                      await activationApi.deleteTask(item._id || item.id);
+                      toast.success(
+                        `Activation task "${item.taskName}" deleted successfully`
+                      );
+                    } catch (err) {
+                      const msg =
+                        err?.response?.data?.message ||
+                        err?.message ||
+                        "Failed to delete activation task";
+                      toast.error(msg);
+                      throw err;
+                    }
+                  }
+                : undefined
             })),
-            total: response.count || 0
+            total: filteredTasks.length
           };
         }}
-
         actions={(row) => (
           <div className="btn-group btn-group-sm">
-
             {/* 👁 VIEW only if activation:view */}
             {canView && (
               <Link
@@ -103,7 +161,7 @@ const ActivationList = () => {
               </Link>
             )}
 
-            {/* 🗑 DELETE handled automatically via deleteFn */}
+            {/* 🗑 DELETE handled via deleteFn + toast */}
           </div>
         )}
       />

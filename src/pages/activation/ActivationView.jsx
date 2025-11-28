@@ -1,11 +1,13 @@
+// src/pages/activation/ActivationView.jsx
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { activationApi } from "../../api";
 import PageHeader from "../../components/PageHeader";
 import StatusBadge from "../../components/StatusBadge";
 import { formatDate } from "../../utils/formatters";
 import RequirePermission from "../../components/RequirePermission";
 import usePermission from "../../hooks/usePermission";
+import { toast } from "react-toastify";
 
 const InfoItem = ({ label, value }) => (
   <div className="mb-3">
@@ -16,16 +18,51 @@ const InfoItem = ({ label, value }) => (
 
 const ActivationView = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [task, setTask] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   const { can } = usePermission();
 
   const canEdit = can("activation:update");
+  const canDelete = can("activation:delete");
 
   useEffect(() => {
-    activationApi.getTask(id).then(({ task }) => setTask(task));
+    const load = async () => {
+      try {
+        setLoading(true);
+        const { task } = await activationApi.getTask(id);
+        setTask(task);
+      } catch (err) {
+        console.error("Unable to load activation task", err);
+        toast.error("Unable to load activation task");
+        setTask(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
   }, [id]);
 
-  if (!task) return <p>Loading...</p>;
+  const handleDelete = async () => {
+
+    try {
+      await activationApi.deleteTask(id);
+      toast.success("Activation task deleted successfully");
+      navigate("/activation");
+    } catch (err) {
+      console.error("Unable to delete activation task", err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to delete activation task";
+      toast.error(msg);
+    }
+  };
+
+  if (loading) return <p>Loading...</p>;
+  if (!task) return <p className="text-muted">Activation task not found</p>;
 
   return (
     <RequirePermission permission="activation:view">
@@ -42,12 +79,20 @@ const ActivationView = () => {
               >
                 <i className="bi bi-pencil-square me-2" /> Edit
               </Link>
+            ),
+            canDelete && (
+              <button
+                key="delete"
+                className="btn btn-outline-danger"
+                onClick={handleDelete}
+              >
+                <i className="bi bi-trash me-2" /> Delete
+              </button>
             )
-          ]}
+          ].filter(Boolean)}
         />
 
         <div className="row g-4">
-
           {/* LEFT CARD - BASIC DETAILS */}
           <div className="col-lg-6">
             <div className="card p-3 shadow-sm h-100">
@@ -55,7 +100,10 @@ const ActivationView = () => {
 
               <InfoItem label="Client" value={task.client?.name} />
               <InfoItem label="Plan" value={task.plan?.planName} />
-              <InfoItem label="Status" value={<StatusBadge status={task.status} />} />
+              <InfoItem
+                label="Status"
+                value={<StatusBadge status={task.status} />}
+              />
               <InfoItem label="Assigned To" value={task.assignedTo?.name} />
               <InfoItem label="Notes" value={task.notes} />
             </div>
@@ -79,7 +127,6 @@ const ActivationView = () => {
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </RequirePermission>

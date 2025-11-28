@@ -1,3 +1,5 @@
+// src/pages/plans/PlanList.jsx
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import CrudListPage from "../common/CrudListPage";
 import StatusBadge from "../../components/StatusBadge";
@@ -11,6 +13,8 @@ import { formatCurrency } from "../../utils/formatters";
 
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
+import { toast } from "react-toastify";
+import useDebounce from "../../hooks/useDebounce";
 
 const columns = [
   {
@@ -75,6 +79,23 @@ const PlanList = () => {
   const canUpdate = can("plan:update");
   const canDelete = can("plan:delete");
 
+  // 🔍 Local search (for this page only, frontend filtering)
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
+
+  // Our custom search input (replaces default in CrudListPage)
+  const customSearchControl = (
+    <>
+      <label className="form-label text-muted small mb-1">Search</label>
+      <input
+        className="form-control"
+        placeholder="Search by plan name, code or client"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+    </>
+  );
+
   return (
     <RequirePermission permission="plan:view">
       <CrudListPage
@@ -83,24 +104,58 @@ const PlanList = () => {
         filters={filters}
         fetcher={planApi.getPlans}
         dataKey="plans"
-
-        // ➕ Create button controlled by permissions
-        createPath={canCreate ? "/plans/new" : undefined}
-
-        responseAdapter={(response) => {
+        customSearchControl={customSearchControl}
+        // ❌ No transformParams – we don't touch API params for search
+        // ✅ We filter the data on the frontend using debouncedSearch
+        responseAdapter={(response, reload) => {
           const plans = response.plans || [];
+
+          const term = debouncedSearch.trim().toLowerCase();
+
+          const filteredPlans = term
+            ? plans.filter((p) => {
+                const name = (p.planName || "").toLowerCase();
+                const code = (p.planCode || "").toLowerCase();
+                const clientName = (p.client?.name || "").toLowerCase();
+
+                return (
+                  name.includes(term) ||
+                  code.includes(term) ||
+                  clientName.includes(term)
+                );
+              })
+            : plans;
+
           return {
-            items: plans.map((item) => ({
+            items: filteredPlans.map((item) => ({
               ...item,
-              deleteFn: canDelete ? planApi.deletePlan : undefined
+              deleteFn: canDelete
+                ? async () => {
+
+
+                    try {
+                      await planApi.deletePlan(item._id || item.id);
+                      toast.success(
+                        `Plan "${item.planName}" deleted successfully`
+                      );
+                    } catch (err) {
+                      const msg =
+                        err?.response?.data?.message ||
+                        err?.message ||
+                        "Failed to delete plan";
+                      toast.error(msg);
+                      throw err;
+                    }
+                  }
+                : undefined
             })),
-            total: response.count || 0
+            total: filteredPlans.length
           };
         }}
-
+        // ➕ Create button controlled by permissions
+        createPath={canCreate ? "/plans/new" : undefined}
         actions={(row) => (
           <div className="btn-group btn-group-sm">
-            {/* 👁 View button (plan:view required) */}
             {canView && (
               <Link
                 to={`/plans/${row.id || row._id}`}
@@ -110,7 +165,6 @@ const PlanList = () => {
               </Link>
             )}
 
-            {/* ✏ Edit button (plan:update required) */}
             {canUpdate && (
               <Link
                 to={`/plans/${row.id || row._id}/edit`}
@@ -119,8 +173,7 @@ const PlanList = () => {
                 Edit
               </Link>
             )}
-
-            {/* 🗑 Delete handled by deleteFn */}
+            {/* 🗑 Delete handled via deleteFn + permission */}
           </div>
         )}
       />

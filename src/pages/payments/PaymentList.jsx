@@ -1,3 +1,5 @@
+// src/pages/payments/PaymentList.jsx
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import CrudListPage from "../common/CrudListPage";
 import { paymentApi } from "../../api";
@@ -6,6 +8,8 @@ import { formatCurrency, formatDate } from "../../utils/formatters";
 
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
+import { toast } from "react-toastify";
+import useDebounce from "../../hooks/useDebounce";
 
 const columns = [
   {
@@ -58,6 +62,23 @@ const PaymentList = () => {
   const canUpdate = can("payment:update");
   const canDelete = can("payment:delete");
 
+  // 🔍 Local search (frontend)
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
+
+  // Our search box – used in CrudListPage instead of default one
+  const customSearchControl = (
+    <>
+      <label className="form-label text-muted small mb-1">Search</label>
+      <input
+        className="form-control"
+        placeholder="Search by client, plan, mode or amount"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+    </>
+  );
+
   return (
     <RequirePermission permission="payment:view">
       <CrudListPage
@@ -66,21 +87,57 @@ const PaymentList = () => {
         filters={filters}
         fetcher={paymentApi.getPayments}
         dataKey="payments"
-
+        customSearchControl={customSearchControl}
         // ➕ Create button only if payment:create
         createPath={canCreate ? "/payments/new" : undefined}
+        // ✅ Frontend search + delete toast
+        responseAdapter={(response, reload) => {
+          const payments = response.payments || [];
 
-        responseAdapter={(response) => ({
-          items: (response.payments || []).map((item) => ({
-            ...item,
-            deleteFn: canDelete ? paymentApi.deletePayment : undefined
-          })),
-          total: response.count || 0
-        })}
+          const term = debouncedSearch.trim().toLowerCase();
 
+          const filteredPayments = term
+            ? payments.filter((p) => {
+                const clientName = (p.client?.name || "").toLowerCase();
+                const planName = (p.plan?.planName || "").toLowerCase();
+                const paymentMode = (p.paymentMode || "").toLowerCase();
+                const amountStr = String(p.amount || "").toLowerCase();
+
+                return (
+                  clientName.includes(term) ||
+                  planName.includes(term) ||
+                  paymentMode.includes(term) ||
+                  amountStr.includes(term)
+                );
+              })
+            : payments;
+
+          return {
+            items: filteredPayments.map((item) => ({
+              ...item,
+              deleteFn: canDelete
+                ? async () => {
+
+
+                    try {
+                      await paymentApi.deletePayment(item._id || item.id);
+                      toast.success("Payment deleted successfully");
+                    } catch (err) {
+                      const msg =
+                        err?.response?.data?.message ||
+                        err?.message ||
+                        "Failed to delete payment";
+                      toast.error(msg);
+                      throw err;
+                    }
+                  }
+                : undefined
+            })),
+            total: filteredPayments.length
+          };
+        }}
         actions={(row) => (
           <div className="btn-group btn-group-sm">
-
             {/* 👁 View only if payment:view */}
             {canView && (
               <Link
@@ -100,8 +157,7 @@ const PaymentList = () => {
                 Edit
               </Link>
             )}
-
-            {/* Delete auto handled in deleteFn */}
+            {/* 🗑 Delete handled via deleteFn + permission + toast */}
           </div>
         )}
       />

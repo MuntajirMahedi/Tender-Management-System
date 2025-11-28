@@ -1,19 +1,21 @@
 // src/pages/clients/ClientForm.jsx
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+import { toast } from "react-toastify";
 import CrudFormPage from "../common/CrudFormPage";
 import { clientApi, userApi } from "../../api";
 import { CLIENT_STATUSES } from "../../utils/constants";
 
 //
-// ✅ Validation — backend required + UI required (assignedCare)
+// ✅ Validation — required fields
 //
 const schema = yup.object({
   name: yup.string().required("Client name is required"),
   mobile: yup.string().required("Mobile number is required"),
   status: yup.string().required("Status is required"),
 
-  // NEW REQUIRED FIELD (UI requirement)
+  // NOW BOTH REQUIRED
+  assignedSales: yup.string().required("Assigned Sales user is required"),
   assignedCare: yup.string().required("Assigned Care user is required")
 });
 
@@ -38,8 +40,8 @@ const defaultValues = {
   purpose: "",
   interestedProducts: "",
   leadSource: "",
-  assignedSales: "",
-  assignedCare: "", // NOW REQUIRED IN UI
+  assignedSales: "", // required in UI
+  assignedCare: "",  // required in UI
   status: "Onboarding"
 };
 
@@ -50,7 +52,10 @@ const ClientForm = () => {
     userApi
       .getUsers()
       .then((res) => setUsers(res.users || []))
-      .catch((error) => console.error("Unable to fetch users", error));
+      .catch((error) => {
+        console.error("Unable to fetch users", error);
+        toast.error("Unable to load users for assignment");
+      });
   }, []);
 
   const userOptions = useMemo(
@@ -63,7 +68,7 @@ const ClientForm = () => {
   );
 
   //
-  // Fields List with “Optional” and “Required (*)” labels
+  // Fields List with updated required labels
   //
   const fields = [
     { name: "name", label: "Client Name *" },
@@ -90,12 +95,11 @@ const ClientForm = () => {
 
     {
       name: "assignedSales",
-      label: "Assigned Sales (Optional)",
+      label: "Assigned Sales *",
       type: "select",
       options: userOptions
     },
 
-    // NOW REQUIRED FIELD
     {
       name: "assignedCare",
       label: "Assigned Care *",
@@ -112,41 +116,83 @@ const ClientForm = () => {
   ];
 
   //
-  // Create + Update transformation
+  // Create + Update with toast + transform
   //
-  const createFn = async (payload) => {
+  const transformPayload = (payload) => {
     const p = { ...payload };
     p.interestedProducts =
       p.interestedProducts
         ?.split(",")
         .map((x) => x.trim())
         .filter(Boolean) || [];
-    return clientApi.createClient(p);
+    return p;
+  };
+
+  const createFn = async (payload) => {
+    try {
+      const res = await clientApi.createClient(transformPayload(payload));
+      toast.success("Client created successfully");
+      return res;
+    } catch (error) {
+      console.error(error);
+      const msg =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to create client";
+      toast.error(msg);
+      throw error;
+    }
   };
 
   const updateFn = async (id, payload) => {
-    const p = { ...payload };
-    p.interestedProducts =
-      p.interestedProducts
-        ?.split(",")
-        .map((x) => x.trim())
-        .filter(Boolean) || [];
-    return clientApi.updateClient(id, p);
+    try {
+      const res = await clientApi.updateClient(id, transformPayload(payload));
+      toast.success("Client updated successfully");
+      return res;
+    } catch (error) {
+      console.error(error);
+      const msg =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to update client";
+      toast.error(msg);
+      throw error;
+    }
   };
 
   const fetcher = async (id) => {
     const { client } = await clientApi.getClient(id);
+
+    const interestedProducts = Array.isArray(client.interestedProducts)
+      ? client.interestedProducts.join(", ")
+      : client.interestedProducts || "";
+
+    // Normalize assignedSales / assignedCare (could be id or object)
+    const assignedSales =
+      client.assignedSales?._id ||
+      client.assignedSales?.id ||
+      client.assignedSales ||
+      "";
+
+    const assignedCare =
+      client.assignedCare?._id ||
+      client.assignedCare?.id ||
+      client.assignedCare ||
+      "";
+
     return {
+      ...defaultValues, // ensure all keys exist
       ...client,
-      interestedProducts: Array.isArray(client.interestedProducts)
-        ? client.interestedProducts.join(", ")
-        : ""
+      interestedProducts,
+      assignedSales,
+      assignedCare
     };
   };
 
   return (
     <CrudFormPage
       title="Client"
+      subtitle=""            // ✅ remove "Fill out form carefully"
       schema={schema}
       defaultValues={defaultValues}
       fields={fields}
