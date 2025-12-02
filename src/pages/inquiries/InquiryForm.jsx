@@ -120,37 +120,7 @@ const InquiryForm = () => {
       col: "col-12"
     }
   ];
-    {
-      name: "interestLevel",
-      label: "Interest Level (Default: Unknown)",
-      type: "select",
-      options: INQUIRY_INTEREST_LEVELS
-    },
-    {
-      name: "status",
-      label: "Status (Default: New)",
-      type: "select",
-      options: INQUIRY_STATUSES
-    },
-    {
-      name: "assignedTo",
-      // ⬇ changed label to required
-      label: "Assigned To *",
-      type: "select",
-      options: userOptions
-    },
-    {
-      name: "nextFollowUpDate",
-      label: "Next Follow-Up (Optional)",
-      type: "date"
-    },
-    {
-      name: "remarks",
-      label: "Remarks (Optional)",
-      isTextArea: true,
-      col: "col-12"
-    }
-  ];
+   
 
   return (
     <CrudFormPage
