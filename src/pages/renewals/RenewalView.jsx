@@ -23,6 +23,10 @@ const RenewalView = () => {
   const [renewal, setRenewal] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // 🔽 delete confirm modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const { can } = usePermission();
   const canUpdate = can("renewal:update");
   const canDelete = can("renewal:delete");
@@ -52,11 +56,14 @@ const RenewalView = () => {
     load();
   }, [id]);
 
+  // 🔽 called when user CONFIRMS delete in modal
   const handleDelete = async () => {
-
     try {
+      setIsDeleting(true);
+
       await renewalApi.deleteRenewal(id);
       toast.success("Renewal deleted successfully");
+      setShowDeleteModal(false);
       navigate("/renewals");
     } catch (err) {
       console.error("Failed to delete renewal", err);
@@ -65,6 +72,8 @@ const RenewalView = () => {
         err?.message ||
         "Failed to delete renewal";
       toast.error(msg);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -92,7 +101,7 @@ const RenewalView = () => {
               <button
                 key="delete"
                 className="btn btn-outline-danger"
-                onClick={handleDelete}
+                onClick={() => setShowDeleteModal(true)} // 👈 open confirm modal
               >
                 <i className="bi bi-trash me-2" />
                 Delete
@@ -141,6 +150,63 @@ const RenewalView = () => {
             </div>
           </div>
         </div>
+
+        {/* ----------- DELETE CONFIRM MODAL ----------- */}
+        {showDeleteModal && (
+          <>
+            <div
+              className="modal fade show d-block"
+              tabIndex="-1"
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="modal-dialog modal-dialog-centered" role="document">
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title text-danger">
+                      <i className="bi bi-exclamation-triangle-fill me-2" />
+                      Confirm Delete
+                    </h5>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      aria-label="Close"
+                      disabled={isDeleting}
+                      onClick={() => !isDeleting && setShowDeleteModal(false)}
+                    ></button>
+                  </div>
+                  <div className="modal-body">
+                    <p>
+                      Are you sure you want to delete this renewal for{" "}
+                      <strong>{renewal?.plan?.planName || "this plan"}</strong>?
+                      This action cannot be undone.
+                    </p>
+                  </div>
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={isDeleting}
+                      onClick={() => setShowDeleteModal(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? "Deleting..." : "Yes, delete"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* backdrop */}
+            <div className="modal-backdrop fade show"></div>
+          </>
+        )}
       </div>
     </RequirePermission>
   );

@@ -21,6 +21,10 @@ const InvoiceView = () => {
   const navigate = useNavigate();
   const [invoice, setInvoice] = useState(null);
 
+  // 🔽 delete modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const { can } = usePermission();
   const canUpdate = can("invoice:update");
   const canDelete = can("invoice:delete");
@@ -32,15 +36,23 @@ const InvoiceView = () => {
       .catch(() => toast.error("Failed to load invoice"));
   }, [id]);
 
+  // 🔽 called when user CONFIRMS delete in modal
   const handleDelete = async () => {
-
     try {
+      setIsDeleting(true);
+
       await invoiceApi.deleteInvoice(id);
       toast.success("Invoice deleted successfully");
+      setShowDeleteModal(false);
       navigate("/invoices");
     } catch (err) {
-      const msg = err?.response?.data?.message || err.message || "Failed to delete invoice";
+      const msg =
+        err?.response?.data?.message ||
+        err.message ||
+        "Failed to delete invoice";
       toast.error(msg);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -67,13 +79,13 @@ const InvoiceView = () => {
               <button
                 key="delete"
                 className="btn btn-outline-danger"
-                onClick={handleDelete}
+                onClick={() => setShowDeleteModal(true)}
               >
                 <i className="bi bi-trash me-2" />
                 Delete
               </button>
             )
-          ]}
+          ].filter(Boolean)}
         />
 
         <div className="row g-4">
@@ -123,11 +135,74 @@ const InvoiceView = () => {
 
               <hr />
 
-              <InfoItem label="Invoice Date" value={formatDate(invoice.invoiceDate)} />
-              <InfoItem label="Due Date" value={formatDate(invoice.dueDate)} />
+              <InfoItem
+                label="Invoice Date"
+                value={formatDate(invoice.invoiceDate)}
+              />
+              <InfoItem
+                label="Due Date"
+                value={formatDate(invoice.dueDate)}
+              />
             </div>
           </div>
         </div>
+
+        {/* ----------- DELETE CONFIRM MODAL ----------- */}
+        {showDeleteModal && (
+          <>
+            <div
+              className="modal fade show d-block"
+              tabIndex="-1"
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="modal-dialog modal-dialog-centered" role="document">
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title text-danger">
+                      <i className="bi bi-exclamation-triangle-fill me-2" />
+                      Confirm Delete
+                    </h5>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      aria-label="Close"
+                      disabled={isDeleting}
+                      onClick={() => !isDeleting && setShowDeleteModal(false)}
+                    ></button>
+                  </div>
+                  <div className="modal-body">
+                    <p>
+                      Are you sure you want to delete this invoice{" "}
+                      <strong>{invoice?.invoiceNumber}</strong>? This action
+                      cannot be undone.
+                    </p>
+                  </div>
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={isDeleting}
+                      onClick={() => setShowDeleteModal(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? "Deleting..." : "Yes, delete"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* backdrop */}
+            <div className="modal-backdrop fade show"></div>
+          </>
+        )}
       </div>
     </RequirePermission>
   );
