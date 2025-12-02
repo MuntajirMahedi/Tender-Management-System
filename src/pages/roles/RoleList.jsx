@@ -13,21 +13,27 @@ const columns = [
     key: "permissions",
     label: "Permissions",
     dataIndex: "permissions",
-    render: (value) => (Array.isArray(value) ? value.length : 0)
-  }
+    render: (value) => (Array.isArray(value) ? value.length : 0),
+  },
 ];
 
 const RoleList = () => {
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 🔍 search
+  // Search
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
 
-  // 📄 pagination: 1, 5, 10, 20, 50, 100
-  const [page, setPage] = useState(1); // 1-based
+  // Pagination
+  const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  // DELETE MODAL STATE
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteId, setDeleteId] = useState(null);
+  const [deleteName, setDeleteName] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -36,13 +42,16 @@ const RoleList = () => {
         const res = await roleApi.getRoles();
 
         const list =
-          Array.isArray(res?.roles) ? res.roles :
-          Array.isArray(res?.data) ? res.data :
-          Array.isArray(res) ? res : [];
+          Array.isArray(res?.roles)
+            ? res.roles
+            : Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res)
+            ? res
+            : [];
 
         setRoles(list);
       } catch (err) {
-        console.error("Unable to load roles", err);
         toast.error("Unable to load roles");
         setRoles([]);
       } finally {
@@ -53,29 +62,30 @@ const RoleList = () => {
     load();
   }, []);
 
-  // 🔍 client-side search by name/key
+  // Filter + Search
   const filtered = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
     if (!term) return roles;
 
     return roles.filter((r) => {
-      const name = (r.name || "").toLowerCase();
-      const key = (r.key || "").toLowerCase();
-      return name.includes(term) || key.includes(term);
+      return (
+        (r.name || "").toLowerCase().includes(term) ||
+        (r.key || "").toLowerCase().includes(term)
+      );
     });
   }, [roles, debouncedSearch]);
 
   const total = filtered.length;
-  const totalPages = total === 0 ? 1 : Math.ceil(total / pageSize);
-  const currentPage = total === 0 ? 1 : Math.min(page, totalPages);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(page, totalPages);
 
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, total);
   const paginatedRoles = filtered.slice(startIndex, endIndex);
 
+  // Pagination functions
   const handlePageSizeChange = (e) => {
-    const value = Number(e.target.value) || 10;
-    setPageSize(value);
+    setPageSize(Number(e.target.value) || 10);
     setPage(1);
   };
 
@@ -87,30 +97,33 @@ const RoleList = () => {
     if (currentPage < totalPages) setPage(currentPage + 1);
   };
 
-  const handleDelete = async (id, name) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete role "${name}"?`
-    );
-    if (!confirmed) return;
+  // 🔥 SHOW DELETE MODAL
+  const confirmDelete = (id, name) => {
+    setDeleteId(id);
+    setDeleteName(name);
+    setShowDeleteModal(true);
+  };
 
+  // 🔥 ACTUAL DELETE
+  const handleDelete = async () => {
     try {
-      await roleApi.deleteRole(id);
-      toast.success(`Role "${name}" deleted successfully`);
+      setIsDeleting(true);
+      await roleApi.deleteRole(deleteId);
 
-      setRoles((prev) => prev.filter((r) => (r._id || r.id) !== id));
+      toast.success(`Role "${deleteName}" deleted`);
+
+      setRoles((prev) => prev.filter((r) => (r._id || r.id) !== deleteId));
+      setShowDeleteModal(false);
     } catch (err) {
-      console.error("Failed to delete role", err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to delete role";
-      toast.error(msg);
+      toast.error("Failed to delete role");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <div>
-      {/* HEADER ROW */}
+      {/* HEADER */}
       <div className="d-flex justify-content-between align-items-center mb-3">
         <div>
           <h4 className="mb-0">Roles</h4>
@@ -125,7 +138,7 @@ const RoleList = () => {
         </Link>
       </div>
 
-      {/* SEARCH ROW */}
+      {/* SEARCH */}
       <div className="card mb-3">
         <div className="card-body row g-3 align-items-end">
           <div className="col-sm-6 col-md-4">
@@ -143,12 +156,12 @@ const RoleList = () => {
         </div>
       </div>
 
-      {/* TABLE CARD */}
+      {/* TABLE */}
       <div className="card shadow-sm">
         <div className="card-body p-0">
           {loading ? (
             <p className="p-3 mb-0">Loading...</p>
-          ) : total === 0 ? (
+          ) : filtered.length === 0 ? (
             <p className="p-3 mb-0 text-muted">No roles found.</p>
           ) : (
             <div className="table-responsive">
@@ -158,27 +171,24 @@ const RoleList = () => {
                     {columns.map((col) => (
                       <th key={col.key}>{col.label}</th>
                     ))}
-                    <th style={{ width: "200px" }}>Actions</th>
+                    <th width="200">Actions</th>
                   </tr>
                 </thead>
+
                 <tbody>
                   {paginatedRoles.map((row) => {
                     const rowId = row._id || row.id;
+
                     return (
                       <tr key={rowId}>
-                        {columns.map((col) => {
-                          const rawValue = row[col.dataIndex];
+                        {columns.map((col) => (
+                          <td key={col.key}>
+                            {col.render
+                              ? col.render(row[col.dataIndex], row)
+                              : row[col.dataIndex]}
+                          </td>
+                        ))}
 
-                          return (
-                            <td key={col.key}>
-                              {col.render
-                                ? col.render(rawValue, row)
-                                : rawValue}
-                            </td>
-                          );
-                        })}
-
-                        {/* Actions */}
                         <td>
                           <div className="btn-group btn-group-sm">
                             <Link
@@ -187,16 +197,17 @@ const RoleList = () => {
                             >
                               View
                             </Link>
+
                             <Link
                               to={`/roles/${rowId}/edit`}
                               className="btn btn-outline-primary"
                             >
                               Edit
                             </Link>
+
                             <button
-                              type="button"
                               className="btn btn-outline-danger"
-                              onClick={() => handleDelete(rowId, row.name)}
+                              onClick={() => confirmDelete(rowId, row.name)}
                             >
                               Delete
                             </button>
@@ -206,15 +217,16 @@ const RoleList = () => {
                     );
                   })}
                 </tbody>
+
               </table>
             </div>
           )}
         </div>
 
-        {/* PAGINATION FOOTER */}
-        {!loading && total > 0 && (
-          <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
-            {/* left: page size + info */}
+        {/* PAGINATION */}
+        {!loading && filtered.length > 0 && (
+          <div className="card-footer d-flex justify-content-between align-items-center">
+
             <div className="d-flex align-items-center gap-2">
               <span className="text-muted small">Show</span>
               <select
@@ -223,23 +235,18 @@ const RoleList = () => {
                 value={pageSize}
                 onChange={handlePageSizeChange}
               >
-                <option value={1}>1</option>
-                <option value={5}>5</option>
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
+                {[5, 10, 20, 50, 100].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
               </select>
-              <span className="text-muted small">entries</span>
 
-              <span className="text-muted small ms-3">
-                Showing{" "}
-                {total === 0 ? "0" : `${startIndex + 1}–${endIndex}`} of{" "}
-                {total} entries
+              <span className="text-muted small">
+                Showing {startIndex + 1}–{endIndex} of {total}
               </span>
             </div>
 
-            {/* right: pagination buttons */}
             <div className="d-flex align-items-center gap-2">
               <button
                 className="btn btn-sm btn-outline-secondary"
@@ -248,9 +255,11 @@ const RoleList = () => {
               >
                 Prev
               </button>
+
               <span className="small">
                 Page {currentPage} of {totalPages}
               </span>
+
               <button
                 className="btn btn-sm btn-outline-secondary"
                 onClick={handleNext}
@@ -259,9 +268,60 @@ const RoleList = () => {
                 Next
               </button>
             </div>
+
           </div>
         )}
       </div>
+
+      {/* DELETE MODAL */}
+      {showDeleteModal && (
+        <>
+          <div className="modal fade show d-block">
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content">
+
+                <div className="modal-header">
+                  <h5 className="modal-title text-danger">
+                    <i className="bi bi-exclamation-triangle-fill me-2"></i>
+                    Confirm Delete
+                  </h5>
+                  <button
+                    className="btn-close"
+                    disabled={isDeleting}
+                    onClick={() => setShowDeleteModal(false)}
+                  ></button>
+                </div>
+
+                <div className="modal-body">
+                  Are you sure you want to delete role
+                  <strong> {deleteName} </strong>?
+                </div>
+
+                <div className="modal-footer">
+                  <button
+                    className="btn btn-secondary"
+                    disabled={isDeleting}
+                    onClick={() => setShowDeleteModal(false)}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    className="btn btn-danger"
+                    disabled={isDeleting}
+                    onClick={handleDelete}
+                  >
+                    {isDeleting ? "Deleting..." : "Yes, Delete"}
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+          <div className="modal-backdrop fade show"></div>
+        </>
+      )}
     </div>
   );
 };

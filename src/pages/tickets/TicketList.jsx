@@ -19,36 +19,36 @@ const columns = [
     key: "client",
     label: "Client",
     dataIndex: "client",
-    render: (value) => value?.name || "—"
+    render: (value) => value?.name || "—",
   },
 
   {
     key: "priority",
     label: "Priority",
     dataIndex: "priority",
-    render: (value) => <StatusBadge status={value} />
+    render: (value) => <StatusBadge status={value} />,
   },
 
   {
     key: "status",
     label: "Status",
     dataIndex: "status",
-    render: (value) => <StatusBadge status={value} />
+    render: (value) => <StatusBadge status={value} />,
   },
 
   {
     key: "assignedTo",
     label: "Owner",
     dataIndex: "assignedTo",
-    render: (value) => value?.name || "—"
+    render: (value) => value?.name || "—",
   },
 
   {
     key: "openedDate",
     label: "Opened",
     dataIndex: "openedDate",
-    render: (value) => formatDate(value)
-  }
+    render: (value) => formatDate(value),
+  },
 ];
 
 const TicketList = () => {
@@ -62,17 +62,23 @@ const TicketList = () => {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // filters
+  // Filters
   const [priorityFilter, setPriorityFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
-  // search (frontend)
+  // Search
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
 
-  // pagination
-  const [page, setPage] = useState(1); // 1-based
-  const [pageSize, setPageSize] = useState(10); // 1, 5, 10, 20, 50, 100
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // DELETE MODAL STATE
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteId, setDeleteId] = useState(null);
+  const [deleteSubject, setDeleteSubject] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -81,13 +87,16 @@ const TicketList = () => {
         const res = await ticketApi.getTickets();
 
         const list =
-          Array.isArray(res?.tickets) ? res.tickets :
-          Array.isArray(res?.data) ? res.data :
-          Array.isArray(res) ? res : [];
+          Array.isArray(res?.tickets)
+            ? res.tickets
+            : Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res)
+            ? res
+            : [];
 
         setTickets(list);
       } catch (err) {
-        console.error("Unable to load tickets", err);
         toast.error("Unable to load tickets");
         setTickets([]);
       } finally {
@@ -98,7 +107,7 @@ const TicketList = () => {
     load();
   }, []);
 
-  // filtered + searched tickets
+  // Filter + search
   const filtered = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
 
@@ -108,94 +117,77 @@ const TicketList = () => {
 
       if (!term) return true;
 
-      const subject = (t.subject || "").toLowerCase();
-      const clientName = (t.client?.name || "").toLowerCase();
-      const ownerName = (t.assignedTo?.name || "").toLowerCase();
-      const status = (t.status || "").toLowerCase();
-      const priority = (t.priority || "").toLowerCase();
-
       return (
-        subject.includes(term) ||
-        clientName.includes(term) ||
-        ownerName.includes(term) ||
-        status.includes(term) ||
-        priority.includes(term)
+        (t.subject || "").toLowerCase().includes(term) ||
+        (t.client?.name || "").toLowerCase().includes(term) ||
+        (t.assignedTo?.name || "").toLowerCase().includes(term) ||
+        (t.status || "").toLowerCase().includes(term) ||
+        (t.priority || "").toLowerCase().includes(term)
       );
     });
   }, [tickets, priorityFilter, statusFilter, debouncedSearch]);
 
   const total = filtered.length;
-  const totalPages = total === 0 ? 1 : Math.ceil(total / pageSize);
-  const currentPage = total === 0 ? 1 : Math.min(page, totalPages);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(page, totalPages);
 
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, total);
+
   const paginatedTickets = filtered.slice(startIndex, endIndex);
 
-  const handlePageSizeChange = (e) => {
-    const value = Number(e.target.value) || 10;
-    setPageSize(value);
-    setPage(1);
+  // OPEN DELETE MODAL
+  const confirmDelete = (id, subject) => {
+    setDeleteId(id);
+    setDeleteSubject(subject);
+    setShowDeleteModal(true);
   };
 
-  const handlePrev = () => {
-    if (currentPage > 1) setPage(currentPage - 1);
-  };
-
-  const handleNext = () => {
-    if (currentPage < totalPages) setPage(currentPage + 1);
-  };
-
-  const handleDelete = async (id, subject) => {
-    if (!canDelete) return;
-
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ticket "${subject}"?`
-    );
-    if (!confirmed) return;
-
+  // DELETE ACTION
+  const handleDelete = async () => {
     try {
-      await ticketApi.deleteTicket(id);
-      toast.success(`Ticket "${subject}" deleted successfully`);
+      setIsDeleting(true);
 
-      setTickets((prev) => prev.filter((t) => (t._id || t.id) !== id));
+      await ticketApi.deleteTicket(deleteId);
+
+      toast.success(`Ticket "${deleteSubject}" deleted`);
+
+      setTickets((prev) => prev.filter((t) => (t._id || t.id) !== deleteId));
+
+      setShowDeleteModal(false);
     } catch (err) {
-      console.error("Failed to delete ticket", err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to delete ticket";
-      toast.error(msg);
+      toast.error("Failed to delete ticket");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <RequirePermission permission="ticket:view">
       <div>
-        {/* HEADER ROW */}
+        {/* HEADER */}
         <div className="d-flex justify-content-between align-items-center mb-3">
           <div>
             <h4 className="mb-0">Support Tickets</h4>
             <small className="text-muted">
-              Track all customer issues and support requests
+              Track all customer issues & support requests
             </small>
           </div>
 
           {canCreate && (
             <Link to="/tickets/new" className="btn btn-primary">
-              <i className="bi bi-plus-lg me-2" />
+              <i className="bi bi-plus-lg me-2"></i>
               New Ticket
             </Link>
           )}
         </div>
 
-        {/* FILTERS + SEARCH */}
+        {/* FILTERS */}
         <div className="card mb-3">
           <div className="card-body row g-3 align-items-end">
+            {/* Priority */}
             <div className="col-sm-6 col-md-3">
-              <label className="form-label small text-muted mb-1">
-                Priority
-              </label>
+              <label className="form-label small text-muted">Priority</label>
               <select
                 className="form-select form-select-sm"
                 value={priorityFilter}
@@ -213,10 +205,9 @@ const TicketList = () => {
               </select>
             </div>
 
+            {/* Status */}
             <div className="col-sm-6 col-md-3">
-              <label className="form-label small text-muted mb-1">
-                Status
-              </label>
+              <label className="form-label small text-muted">Status</label>
               <select
                 className="form-select form-select-sm"
                 value={statusFilter}
@@ -234,13 +225,12 @@ const TicketList = () => {
               </select>
             </div>
 
+            {/* Search */}
             <div className="col-sm-6 col-md-4">
-              <label className="form-label small text-muted mb-1">
-                Search
-              </label>
+              <label className="form-label small text-muted">Search</label>
               <input
-                className="form-control form-control-sm"
-                placeholder="Search by subject, client, owner, status or priority"
+                className="form-control form-select-sm"
+                placeholder="Subject / Client / Owner"
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -251,7 +241,7 @@ const TicketList = () => {
           </div>
         </div>
 
-        {/* TABLE CARD */}
+        {/* TABLE */}
         <div className="card shadow-sm">
           <div className="card-body p-0">
             {loading ? (
@@ -260,40 +250,37 @@ const TicketList = () => {
               <p className="p-3 mb-0 text-muted">No tickets found.</p>
             ) : (
               <div className="table-responsive">
-                <table className="table table-striped table-hover mb-0 align-middle">
+                <table className="table table-hover table-striped mb-0 align-middle">
                   <thead className="table-light">
                     <tr>
                       {columns.map((col) => (
                         <th key={col.key}>{col.label}</th>
                       ))}
-                      <th style={{ width: "200px" }}>Actions</th>
+                      <th width="180">Actions</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {paginatedTickets.map((row) => {
                       const rowId = row._id || row.id;
+
                       return (
                         <tr key={rowId}>
                           {columns.map((col) => {
-                            let rawValue;
-                            if (col.dataIndex === "client") {
-                              rawValue = row.client;
-                            } else if (col.dataIndex === "assignedTo") {
-                              rawValue = row.assignedTo;
-                            } else {
-                              rawValue = row[col.dataIndex];
-                            }
+                            const raw =
+                              col.dataIndex === "client"
+                                ? row.client
+                                : col.dataIndex === "assignedTo"
+                                ? row.assignedTo
+                                : row[col.dataIndex];
 
                             return (
                               <td key={col.key}>
-                                {col.render
-                                  ? col.render(rawValue, row)
-                                  : rawValue}
+                                {col.render ? col.render(raw, row) : raw}
                               </td>
                             );
                           })}
 
-                          {/* Actions */}
                           <td>
                             <div className="btn-group btn-group-sm">
                               {canView && (
@@ -316,10 +303,9 @@ const TicketList = () => {
 
                               {canDelete && (
                                 <button
-                                  type="button"
                                   className="btn btn-outline-danger"
                                   onClick={() =>
-                                    handleDelete(rowId, row.subject)
+                                    confirmDelete(rowId, row.subject)
                                   }
                                 >
                                   Delete
@@ -331,57 +317,54 @@ const TicketList = () => {
                       );
                     })}
                   </tbody>
+
                 </table>
               </div>
             )}
           </div>
 
-          {/* PAGINATION FOOTER */}
+          {/* PAGINATION */}
           {!loading && total > 0 && (
-            <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
-              {/* left: page size + info */}
+            <div className="card-footer d-flex justify-content-between align-items-center">
+              {/* Left */}
               <div className="d-flex align-items-center gap-2">
-                <span className="text-muted small">Show</span>
+                <span className="small text-muted">Show</span>
                 <select
                   className="form-select form-select-sm"
                   style={{ width: "auto" }}
                   value={pageSize}
-                  onChange={handlePageSizeChange}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
                 >
-                  <option value={1}>1</option>
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
+                  {[5, 10, 20, 50, 100].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
                 </select>
-                <span className="text-muted small">entries</span>
-
-                <span className="text-muted small ms-3">
-                  Showing{" "}
-                  {total === 0
-                    ? "0"
-                    : `${startIndex + 1}–${endIndex}`}{" "}
-                  of {total} entries
+                <span className="small text-muted">
+                  Showing {startIndex + 1}–{endIndex} of {total}
                 </span>
               </div>
 
-              {/* right: pagination buttons */}
+              {/* Right */}
               <div className="d-flex align-items-center gap-2">
                 <button
                   className="btn btn-sm btn-outline-secondary"
-                  onClick={handlePrev}
                   disabled={currentPage <= 1}
+                  onClick={() => setPage(currentPage - 1)}
                 >
                   Prev
                 </button>
-                <span className="small">
-                  Page {currentPage} of {totalPages}
-                </span>
+
+                <span className="small">Page {currentPage} of {totalPages}</span>
+
                 <button
                   className="btn btn-sm btn-outline-secondary"
-                  onClick={handleNext}
                   disabled={currentPage >= totalPages}
+                  onClick={() => setPage(currentPage + 1)}
                 >
                   Next
                 </button>
@@ -389,6 +372,56 @@ const TicketList = () => {
             </div>
           )}
         </div>
+
+        {/* DELETE CONFIRM MODAL */}
+        {showDeleteModal && (
+          <>
+            <div className="modal fade show d-block">
+              <div className="modal-dialog modal-dialog-centered">
+                <div className="modal-content">
+
+                  <div className="modal-header">
+                    <h5 className="modal-title text-danger">
+                      <i className="bi bi-exclamation-triangle me-2" />
+                      Confirm Delete
+                    </h5>
+                    <button
+                      className="btn-close"
+                      disabled={isDeleting}
+                      onClick={() => setShowDeleteModal(false)}
+                    />
+                  </div>
+
+                  <div className="modal-body">
+                    Are you sure you want to delete ticket <strong>"{deleteSubject}"</strong>?
+                  </div>
+
+                  <div className="modal-footer">
+                    <button
+                      className="btn btn-secondary"
+                      disabled={isDeleting}
+                      onClick={() => setShowDeleteModal(false)}
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      className="btn btn-danger"
+                      disabled={isDeleting}
+                      onClick={handleDelete}
+                    >
+                      {isDeleting ? "Deleting..." : "Yes, Delete"}
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-backdrop fade show" />
+          </>
+        )}
+
       </div>
     </RequirePermission>
   );

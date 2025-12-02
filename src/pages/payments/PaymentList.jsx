@@ -34,8 +34,12 @@ const columns = [
     key: "amount",
     label: "Amount",
     dataIndex: "amount",
-    align: "right",
-    render: (value) => formatCurrency(value || 0, "INR")
+    align: "center",
+    render: (value) => (
+      <div className="text-center fw-semibold">
+        {formatCurrency(value || 0, "INR")}
+      </div>
+    )
   },
   {
     key: "paymentMode",
@@ -61,16 +65,20 @@ const PaymentList = () => {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // filters
-  const [modeFilter, setModeFilter] = useState("");
+  // modal delete state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteId, setDeleteId] = useState(null);
+  const [deleteName, setDeleteName] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  // search (frontend)
+  // filters & search
+  const [modeFilter, setModeFilter] = useState("");
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
 
   // pagination
-  const [page, setPage] = useState(1); // 1-based
-  const [pageSize, setPageSize] = useState(10); // 1, 5, 10, 20, 50, 100
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     const load = async () => {
@@ -85,7 +93,6 @@ const PaymentList = () => {
 
         setPayments(list);
       } catch (err) {
-        console.error("Unable to load payments", err);
         toast.error("Unable to load payments");
         setPayments([]);
       } finally {
@@ -96,7 +103,7 @@ const PaymentList = () => {
     load();
   }, []);
 
-  // filtered + searched payments
+  // filter + search
   const filtered = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
 
@@ -107,90 +114,79 @@ const PaymentList = () => {
 
       const clientName = (p.client?.name || "").toLowerCase();
       const planName = (p.plan?.planName || "").toLowerCase();
-      const paymentMode = (p.paymentMode || "").toLowerCase();
-      const amountStr = String(p.amount || "").toLowerCase();
+      const mode = (p.paymentMode || "").toLowerCase();
+      const amount = String(p.amount || "").toLowerCase();
 
       return (
         clientName.includes(term) ||
         planName.includes(term) ||
-        paymentMode.includes(term) ||
-        amountStr.includes(term)
+        mode.includes(term) ||
+        amount.includes(term)
       );
     });
   }, [payments, modeFilter, debouncedSearch]);
 
+  // pagination values
   const total = filtered.length;
-  const totalPages = total === 0 ? 1 : Math.ceil(total / pageSize);
-  const currentPage = total === 0 ? 1 : Math.min(page, totalPages);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(page, totalPages);
 
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, total);
   const paginatedPayments = filtered.slice(startIndex, endIndex);
 
-  const handlePageSizeChange = (e) => {
-    const value = Number(e.target.value) || 10;
-    setPageSize(value);
-    setPage(1);
+  // show modal
+  const confirmDelete = (id, name) => {
+    setDeleteId(id);
+    setDeleteName(name);
+    setShowDeleteModal(true);
   };
 
-  const handlePrev = () => {
-    if (currentPage > 1) setPage(currentPage - 1);
-  };
-
-  const handleNext = () => {
-    if (currentPage < totalPages) setPage(currentPage + 1);
-  };
-
-  const handleDelete = async (id) => {
-    if (!canDelete) return;
-
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this payment?"
-    );
-    if (!confirmed) return;
-
+  // actual delete
+  const handleDelete = async () => {
     try {
-      await paymentApi.deletePayment(id);
+      setIsDeleting(true);
+
+      await paymentApi.deletePayment(deleteId);
+
       toast.success("Payment deleted successfully");
 
-      setPayments((prev) => prev.filter((p) => (p._id || p.id) !== id));
+      setPayments((prev) =>
+        prev.filter((p) => (p._id || p.id) !== deleteId)
+      );
+
+      setShowDeleteModal(false);
     } catch (err) {
-      console.error("Failed to delete payment", err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to delete payment";
-      toast.error(msg);
+      toast.error("Failed to delete payment");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <RequirePermission permission="payment:view">
       <div>
-        {/* HEADER ROW */}
+        {/* ---------- HEADER ---------- */}
         <div className="d-flex justify-content-between align-items-center mb-3">
           <div>
             <h4 className="mb-0">Payments</h4>
-            <small className="text-muted">
-              Track all payments received against client plans
-            </small>
+            <small className="text-muted">Track incoming payments</small>
           </div>
 
           {canCreate && (
             <Link to="/payments/new" className="btn btn-primary">
-              <i className="bi bi-plus-lg me-2" />
+              <i className="bi bi-plus-lg me-2"></i>
               New Payment
             </Link>
           )}
         </div>
 
-        {/* FILTERS + SEARCH */}
+        {/* ---------- FILTERS ---------- */}
         <div className="card mb-3">
           <div className="card-body row g-3 align-items-end">
+            {/* Mode */}
             <div className="col-sm-6 col-md-3">
-              <label className="form-label small text-muted mb-1">
-                Mode
-              </label>
+              <label className="form-label small text-muted">Mode</label>
               <select
                 className="form-select form-select-sm"
                 value={modeFilter}
@@ -208,13 +204,12 @@ const PaymentList = () => {
               </select>
             </div>
 
+            {/* Search */}
             <div className="col-sm-6 col-md-3">
-              <label className="form-label small text-muted mb-1">
-                Search
-              </label>
+              <label className="form-label small text-muted">Search</label>
               <input
                 className="form-control form-control-sm"
-                placeholder="Search by client, plan, mode or amount"
+                placeholder="Search client, plan, mode, amount"
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -225,47 +220,50 @@ const PaymentList = () => {
           </div>
         </div>
 
-        {/* TABLE CARD */}
+        {/* ---------- TABLE ---------- */}
         <div className="card shadow-sm">
           <div className="card-body p-0">
             {loading ? (
-              <p className="p-3 mb-0">Loading...</p>
-            ) : total === 0 ? (
-              <p className="p-3 mb-0 text-muted">No payments found.</p>
+              <p className="p-3">Loading...</p>
+            ) : filtered.length === 0 ? (
+              <p className="p-3 text-muted">No payments found.</p>
             ) : (
               <div className="table-responsive">
                 <table className="table table-striped table-hover mb-0 align-middle">
                   <thead className="table-light">
                     <tr>
                       {columns.map((col) => (
-                        <th key={col.key}>{col.label}</th>
+                        <th
+                          key={col.key}
+                          className={col.align === "center" ? "text-center" : ""}
+                        >
+                          {col.label}
+                        </th>
                       ))}
-                      <th style={{ width: "180px" }}>Actions</th>
+                      <th width="160">Actions</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {paginatedPayments.map((row) => {
                       const rowId = row._id || row.id;
+
                       return (
                         <tr key={rowId}>
                           {columns.map((col) => {
-                            let rawValue;
-                            if (col.dataIndex === "client") {
-                              rawValue = row.client;
-                            } else if (col.dataIndex === "plan") {
-                              rawValue = row.plan;
-                            } else if (col.dataIndex === "planType") {
-                              rawValue = row.plan?.planType;
-                            } else {
-                              rawValue = row[col.dataIndex];
-                            }
+                            let rawValue =
+                              col.dataIndex === "client"
+                                ? row.client
+                                : col.dataIndex === "plan"
+                                ? row.plan
+                                : col.dataIndex === "planType"
+                                ? row.plan?.planType
+                                : row[col.dataIndex];
 
                             return (
                               <td
                                 key={col.key}
-                                className={
-                                  col.align === "right" ? "text-end" : ""
-                                }
+                                className={col.align === "center" ? "text-center" : ""}
                               >
                                 {col.render
                                   ? col.render(rawValue, row)
@@ -274,7 +272,7 @@ const PaymentList = () => {
                             );
                           })}
 
-                          {/* Actions */}
+                          {/* actions */}
                           <td>
                             <div className="btn-group btn-group-sm">
                               {canView && (
@@ -285,7 +283,6 @@ const PaymentList = () => {
                                   View
                                 </Link>
                               )}
-
                               {canUpdate && (
                                 <Link
                                   to={`/payments/${rowId}/edit`}
@@ -294,12 +291,12 @@ const PaymentList = () => {
                                   Edit
                                 </Link>
                               )}
-
                               {canDelete && (
                                 <button
-                                  type="button"
                                   className="btn btn-outline-danger"
-                                  onClick={() => handleDelete(rowId)}
+                                  onClick={() =>
+                                    confirmDelete(rowId, row.client?.name)
+                                  }
                                 >
                                   Delete
                                 </button>
@@ -315,59 +312,107 @@ const PaymentList = () => {
             )}
           </div>
 
-          {/* PAGINATION FOOTER */}
-          {!loading && total > 0 && (
-            <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
-              {/* left: page size + info */}
+          {/* ---------- PAGINATION ---------- */}
+          {!loading && filtered.length > 0 && (
+            <div className="card-footer d-flex justify-content-between align-items-center">
+
               <div className="d-flex align-items-center gap-2">
                 <span className="text-muted small">Show</span>
+
                 <select
                   className="form-select form-select-sm"
                   style={{ width: "auto" }}
                   value={pageSize}
-                  onChange={handlePageSizeChange}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
                 >
-                  <option value={1}>1</option>
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
+                  {[5, 10, 20, 50, 100].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
                 </select>
-                <span className="text-muted small">entries</span>
 
-                <span className="text-muted small ms-3">
-                  Showing{" "}
-                  {total === 0
-                    ? "0"
-                    : `${startIndex + 1}–${endIndex}`}{" "}
-                  of {total} entries
+                <span className="text-muted small">
+                  Showing {startIndex + 1}–{endIndex} of {total}
                 </span>
               </div>
 
-              {/* right: pagination buttons */}
               <div className="d-flex align-items-center gap-2">
                 <button
                   className="btn btn-sm btn-outline-secondary"
-                  onClick={handlePrev}
                   disabled={currentPage <= 1}
+                  onClick={() => setPage(currentPage - 1)}
                 >
                   Prev
                 </button>
+
                 <span className="small">
                   Page {currentPage} of {totalPages}
                 </span>
+
                 <button
                   className="btn btn-sm btn-outline-secondary"
-                  onClick={handleNext}
                   disabled={currentPage >= totalPages}
+                  onClick={() => setPage(currentPage + 1)}
                 >
                   Next
                 </button>
               </div>
+
             </div>
           )}
         </div>
+
+        {/* ---------- DELETE CONFIRM MODAL ---------- */}
+        {showDeleteModal && (
+          <>
+            <div className="modal fade show d-block">
+              <div className="modal-dialog modal-dialog-centered">
+                <div className="modal-content">
+
+                  <div className="modal-header">
+                    <h5 className="modal-title text-danger">
+                      <i className="bi bi-exclamation-triangle-fill me-2"></i>
+                      Confirm Delete
+                    </h5>
+                    <button
+                      className="btn-close"
+                      onClick={() => !isDeleting && setShowDeleteModal(false)}
+                      disabled={isDeleting}
+                    ></button>
+                  </div>
+
+                  <div className="modal-body">
+                    Are you sure you want to delete payment of  
+                    <strong> {deleteName || "this client"} </strong>?
+                  </div>
+
+                  <div className="modal-footer">
+                    <button
+                      className="btn btn-secondary"
+                      disabled={isDeleting}
+                      onClick={() => setShowDeleteModal(false)}
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      className="btn btn-danger"
+                      disabled={isDeleting}
+                      onClick={handleDelete}
+                    >
+                      {isDeleting ? "Deleting..." : "Yes, Delete"}
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-backdrop fade show"></div>
+          </>
+        )}
       </div>
     </RequirePermission>
   );

@@ -6,16 +6,12 @@ import CrudFormPage from "../common/CrudFormPage";
 import { clientApi, invoiceApi, planApi } from "../../api";
 import { PAYMENT_STATUSES } from "../../utils/constants";
 
-// ✅ Validation
+// Validation
 const schema = yup.object({
   clientId: yup.string().required("Client is required"),
   planId: yup.string().required("Plan is required"),
-  invoiceDate: yup
-    .string()
-    .required("Invoice date is required"),
-  dueDate: yup
-    .string()
-    .required("Due date is required"),
+  invoiceDate: yup.string().required("Invoice date is required"),
+  dueDate: yup.string().required("Due date is required"),
   baseAmount: yup
     .number()
     .typeError("Base amount must be a number")
@@ -23,10 +19,10 @@ const schema = yup.object({
   taxPercent: yup
     .number()
     .typeError("Tax must be a number")
-    .required("Tax % is required")
+    .required("Tax % is required"),
 });
 
-// Default Values
+// Defaults
 const defaultValues = {
   clientId: "",
   planId: "",
@@ -34,133 +30,143 @@ const defaultValues = {
   dueDate: "",
   baseAmount: "",
   discount: 0,
-  taxPercent: 18, // ✅ default 18
+  taxPercent: 18,
   paymentStatus: "Pending",
-  notes: ""
+  notes: "",
 };
 
 const InvoiceForm = () => {
   const [clients, setClients] = useState([]);
   const [plans, setPlans] = useState([]);
 
-  useEffect(() => {
-    clientApi
-      .getClients()
-      .then((res) => setClients(res.clients || []))
-      .catch((err) => {
-        console.error("Unable to load clients", err);
-        toast.error("Unable to load clients");
-      });
+  const [selectedClientId, setSelectedClientId] = useState("");
 
-    planApi
-      .getPlans()
-      .then((res) => setPlans(res.plans || []))
-      .catch((err) => {
-        console.error("Unable to load plans", err);
-        toast.error("Unable to load plans");
-      });
+  // Load dropdown data
+  useEffect(() => {
+    clientApi.getClients().then((res) => setClients(res.clients || []));
+    planApi.getPlans().then((res) => setPlans(res.plans || []));
   }, []);
 
+  // Client dropdown options
   const clientOptions = useMemo(
     () =>
       clients.map((client) => ({
-        value: client.id || client._id,
-        label: `${client.name} (${client.clientCode || "No Code"})`
+        value: client._id || client.id,
+        label: `${client.name} (${client.clientCode || "No Code"})`,
       })),
     [clients]
   );
 
-  const planOptions = useMemo(
+  // ⭐ Payment Status dropdown FIX
+  const paymentStatusOptions = useMemo(
     () =>
-      plans.map((plan) => ({
-        value: plan.id || plan._id,
-        label: `${plan.planName} – ${plan.client?.name || ""}`
+      PAYMENT_STATUSES.map((st) => ({
+        value: st,
+        label: st,
       })),
-    [plans]
+    []
   );
 
-  const fields = [
-    { name: "clientId", label: "Client *", type: "select", options: clientOptions },
-    { name: "planId", label: "Plan *", type: "select", options: planOptions },
+  // ⭐ Filter plans by selected client
+  const planOptions = useMemo(() => {
+    if (!selectedClientId) return [];
 
-    // ✅ Now required in UI
+    return plans
+      .filter((p) => p.client?._id === selectedClientId)
+      .map((p) => ({
+        value: p._id || p.id,
+        label: `${p.planName} (${p.client?.name})`,
+      }));
+  }, [plans, selectedClientId]);
+
+  // Form Fields
+  const fields = [
+    {
+      name: "clientId",
+      label: "Client *",
+      type: "select",
+      options: clientOptions,
+    },
+    {
+      name: "planId",
+      label: "Plan *",
+      type: "select",
+      options: planOptions,
+    },
+
     { name: "invoiceDate", label: "Invoice Date *", type: "date" },
     { name: "dueDate", label: "Due Date *", type: "date" },
 
     { name: "baseAmount", label: "Base Amount *", type: "number" },
-    { name: "discount", label: "Discount (Optional)", type: "number" },
+    { name: "discount", label: "Discount", type: "number" },
 
-    // ✅ Tax required, default 18
     { name: "taxPercent", label: "Tax % *", type: "number" },
 
     {
       name: "paymentStatus",
       label: "Payment Status *",
       type: "select",
-      options: PAYMENT_STATUSES
+      options: paymentStatusOptions, // ← FIXED
     },
 
-    { name: "notes", label: "Notes (Optional)", isTextArea: true, col: "col-12" }
+    { name: "notes", label: "Notes", isTextArea: true, col: "col-12" },
   ];
 
-  // ✅ Create with toast
+  // Create invoice
   const createFn = async (payload) => {
     try {
       const res = await invoiceApi.createInvoice({
         ...payload,
-        taxPercent: payload.taxPercent || 18
+        taxPercent: payload.taxPercent || 18,
       });
       toast.success("Invoice created successfully");
       return res;
     } catch (err) {
-      console.error("Failed to create invoice", err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to create invoice";
-      toast.error(msg);
+      toast.error(err?.response?.data?.message || "Failed to create invoice");
       throw err;
     }
   };
 
-  // ✅ Update with toast
+  // Update invoice
   const updateFn = async (id, payload) => {
     try {
       const res = await invoiceApi.updateInvoice(id, {
         ...payload,
-        taxPercent: payload.taxPercent || 18
+        taxPercent: payload.taxPercent || 18,
       });
       toast.success("Invoice updated successfully");
       return res;
     } catch (err) {
-      console.error("Failed to update invoice", err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to update invoice";
-      toast.error(msg);
+      toast.error(err?.response?.data?.message || "Failed to update invoice");
       throw err;
     }
   };
 
-  // ✅ Prefill data on edit (with proper date formatting)
+  // Fetch invoice on edit
   const fetcher = async (id) => {
     const { invoice } = await invoiceApi.getInvoice(id);
+
+    const cid = invoice.client?._id;
+
+    // Auto-update plans dropdown
+    setSelectedClientId(cid);
 
     return {
       ...defaultValues,
       ...invoice,
-      clientId: invoice.client?._id || invoice.client || "",
-      planId: invoice.plan?._id || invoice.plan || "",
-      invoiceDate: invoice.invoiceDate
-        ? invoice.invoiceDate.substring(0, 10)
-        : "",
-      dueDate: invoice.dueDate ? invoice.dueDate.substring(0, 10) : "",
-      taxPercent:
-        typeof invoice.taxPercent === "number" && !Number.isNaN(invoice.taxPercent)
-          ? invoice.taxPercent
-          : 18
+      clientId: cid,
+      planId: invoice.plan?._id,
+      invoiceDate: invoice.invoiceDate?.substring(0, 10) || "",
+      dueDate: invoice.dueDate?.substring(0, 10) || "",
+      taxPercent: invoice.taxPercent || 18,
     };
+  };
+
+  // Handle client change → update plans
+  const handleFieldChange = (name, value) => {
+    if (name === "clientId") {
+      setSelectedClientId(value);
+    }
   };
 
   return (
@@ -173,6 +179,7 @@ const InvoiceForm = () => {
       updateFn={updateFn}
       fetcher={fetcher}
       redirectPath="/invoices"
+      onFieldChange={handleFieldChange}
     />
   );
 };

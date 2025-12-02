@@ -14,7 +14,8 @@ const CrudFormPage = ({
   createFn,
   updateFn,
   fetcher,
-  redirectPath
+  redirectPath,
+  onFieldChange
 }) => {
   const { id } = useParams();
   const isEdit = Boolean(id);
@@ -32,7 +33,6 @@ const CrudFormPage = ({
     defaultValues
   });
 
-  // Load record when editing
   useEffect(() => {
     const load = async () => {
       if (!isEdit || !fetcher) return;
@@ -40,27 +40,25 @@ const CrudFormPage = ({
 
       try {
         const response = await fetcher(id);
-        if (response) reset(response);
+        reset(response);
       } catch (error) {
-        console.error(`Unable to load ${title} record`, error);
+        console.error("Error loading record:", error);
       } finally {
         setLoading(false);
       }
     };
-    load();
-  }, [fetcher, id, isEdit, reset, title]);
 
-  // Submit handler
+    load();
+  }, [fetcher, id, isEdit, reset]);
+
   const onSubmit = async (values) => {
     try {
-      if (isEdit && updateFn) {
-        await updateFn(id, values);
-      } else if (!isEdit && createFn) {
-        await createFn(values);
-      }
+      if (isEdit) await updateFn(id, values);
+      else await createFn(values);
+
       navigate(redirectPath);
     } catch (error) {
-      console.error("Unable to save data", error);
+      console.error("Save error:", error);
     }
   };
 
@@ -68,61 +66,36 @@ const CrudFormPage = ({
 
   return (
     <div>
-      {/* Page Header */}
-      <PageHeader
-        title={`${isEdit ? "Edit" : "Add"} ${title}`}
-      />
+      <PageHeader title={`${isEdit ? "Edit" : "Add"} ${title}`} />
 
-      {/* Styled Form Container */}
       <div className="card shadow-sm border-0 mb-4">
         <div className="card-body p-4">
           <form onSubmit={handleSubmit(onSubmit)}>
             <div className="row g-4">
               {fields.map((field) => (
                 <div key={field.name} className={field.col || "col-md-6"}>
-                  {field.render ? (
-                    field.render(control)
-                  ) : (
-                    <FormInput
-                      control={control}
-                      name={field.name}
-                      label={field.label}
-                      type={field.type}
-                      placeholder={field.placeholder}
-                      options={field.options || []}
-                      isTextArea={field.isTextArea}
-                    />
-                  )}
+                  <FormInput
+                    control={control}
+                    {...field}
+                    onFieldChange={onFieldChange}
+                  />
                 </div>
               ))}
             </div>
 
-            {/* Footer Buttons */}
             <div className="d-flex justify-content-end gap-2 mt-4">
               <button
                 type="button"
-                className="btn btn-light border"
                 onClick={() => navigate(redirectPath)}
+                className="btn btn-light border"
               >
-                <i className="bi bi-arrow-left me-2" />
                 Cancel
               </button>
-
               <button
-                className="btn btn-primary"
                 disabled={isSubmitting}
+                className="btn btn-primary"
               >
-                {isSubmitting ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2"></span>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-check2-square me-2"></i>
-                    Save
-                  </>
-                )}
+                {isSubmitting ? "Saving..." : "Save"}
               </button>
             </div>
           </form>

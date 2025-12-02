@@ -6,7 +6,7 @@ const usePermission = () => {
   // permissions array coming from backend (we already added it in auth + user controllers)
   const permissions = user?.permissions || [];
   const role = user?.role;
-  console.log("[usePermission] current role:", role, "perms:", permissions);
+  // console.log("[usePermission] current role:", role, "perms:", permissions);
 
   const isOwner = role === "owner"; // super admin
 

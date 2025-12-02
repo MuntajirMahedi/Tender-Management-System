@@ -15,7 +15,6 @@ const InfoItem = ({ label, value }) => (
   </div>
 );
 
-// Small helper to make "client" → "Client", "inquiry" → "Inquiry"
 const toTitle = (str) => {
   if (!str) return "";
   return str.charAt(0).toUpperCase() + str.slice(1).replace(/_/g, " ");
@@ -26,9 +25,14 @@ const UserView = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
 
-  // 🔽 delete confirm modal state
+  // DELETE MODAL
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // STATUS MODAL
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [targetStatus, setTargetStatus] = useState(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -43,10 +47,10 @@ const UserView = () => {
     load();
   }, [id]);
 
+  // DELETE HANDLER
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
-
       await userApi.deleteUser(id);
       toast.success("User deleted successfully");
       setShowDeleteModal(false);
@@ -59,34 +63,45 @@ const UserView = () => {
     }
   };
 
-  const handleStatusToggle = async (activeState) => {
-    const actionText = activeState
-      ? "Allow access to this user?"
-      : "Revoke this user's access?";
-    if (!window.confirm(actionText)) return;
+  // OPEN STATUS CONFIRM MODAL
+  const openStatusModal = (newStatus) => {
+    setTargetStatus(newStatus);
+    setShowStatusModal(true);
+  };
 
+  // CONFIRM STATUS UPDATE
+  const confirmStatusUpdate = async () => {
     try {
-      await userApi.toggleUserStatus(id, activeState);
-      setUser((prev) => ({ ...prev, isActive: activeState }));
+      setIsUpdatingStatus(true);
+      await userApi.toggleUserStatus(id, targetStatus);
+
+      setUser((prev) => ({ ...prev, isActive: targetStatus }));
+
       toast.success(
-        `User is now marked as ${activeState ? "Active" : "Inactive"}`
+        targetStatus
+          ? "User access allowed successfully"
+          : "User access revoked successfully"
       );
+
+      setShowStatusModal(false);
     } catch (err) {
       const msg = err?.response?.data?.message || "Failed to update access";
       toast.error(msg);
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
   if (!user) return <p>Loading...</p>;
 
-  // ✅ Normalize + group permissions for display
+  // Permissions grouping
   const rawPermissions = user.permissions || [];
   const permissionCodes = rawPermissions
     .map((p) => (typeof p === "string" ? p : p?.code || ""))
     .filter(Boolean);
 
   const groupedPermissions = permissionCodes.reduce((acc, code) => {
-    const [module, action] = code.split(":"); // e.g. "client:view"
+    const [module, action] = code.split(":");
     const moduleKey = module || "other";
     if (!acc[moduleKey]) acc[moduleKey] = [];
     acc[moduleKey].push(action || "access");
@@ -111,7 +126,7 @@ const UserView = () => {
             <Can permission="users.edit" key="revoke">
               <button
                 className="btn btn-outline-warning"
-                onClick={() => handleStatusToggle(false)}
+                onClick={() => openStatusModal(false)}
               >
                 <i className="bi bi-slash-circle me-2" />
                 Revoke Access
@@ -121,7 +136,7 @@ const UserView = () => {
             <Can permission="users.edit" key="allow">
               <button
                 className="btn btn-outline-success"
-                onClick={() => handleStatusToggle(true)}
+                onClick={() => openStatusModal(true)}
               >
                 <i className="bi bi-check-circle me-2" />
                 Allow Access
@@ -132,7 +147,7 @@ const UserView = () => {
           <Can permission="users.delete" key="delete">
             <button
               className="btn btn-outline-danger"
-              onClick={() => setShowDeleteModal(true)} // 👈 open confirm modal
+              onClick={() => setShowDeleteModal(true)}
             >
               <i className="bi bi-trash me-2" /> Delete
             </button>
@@ -141,22 +156,18 @@ const UserView = () => {
       />
 
       <div className="row g-4">
-        {/* LEFT PROFILE CARD */}
         <div className="col-lg-6">
           <div className="card p-3 shadow-sm h-100">
             <h6 className="text-primary mb-3">Profile</h6>
-
             <InfoItem label="Full Name" value={user.name} />
             <InfoItem label="Email" value={user.email} />
             <InfoItem label="Mobile" value={user.mobile} />
           </div>
         </div>
 
-        {/* RIGHT ACCOUNT CARD */}
         <div className="col-lg-6">
           <div className="card p-3 shadow-sm h-100">
             <h6 className="text-primary mb-3">Account Details</h6>
-
             <InfoItem
               label="Role"
               value={
@@ -165,12 +176,10 @@ const UserView = () => {
                   : "—"
               }
             />
-
             <div className="mb-3">
               <div className="text-muted small">Status</div>
               <StatusBadge status={user.isActive ? "Active" : "Inactive"} />
             </div>
-
             <InfoItem
               label="Created At"
               value={new Date(user.createdAt).toLocaleString()}
@@ -183,7 +192,6 @@ const UserView = () => {
         </div>
       </div>
 
-      {/* PERMISSIONS CARD */}
       <div className="card p-3 shadow-sm mt-4">
         <h6 className="text-primary mb-3">
           Permissions{" "}
@@ -227,16 +235,11 @@ const UserView = () => {
         )}
       </div>
 
-      {/* ----------- DELETE CONFIRM MODAL ----------- */}
+      {/* DELETE MODAL */}
       {showDeleteModal && (
         <>
-          <div
-            className="modal fade show d-block"
-            tabIndex="-1"
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="modal-dialog modal-dialog-centered" role="document">
+          <div className="modal fade show d-block" tabIndex="-1" role="dialog">
+            <div className="modal-dialog modal-dialog-centered">
               <div className="modal-content">
                 <div className="modal-header">
                   <h5 className="modal-title text-danger">
@@ -246,17 +249,18 @@ const UserView = () => {
                   <button
                     type="button"
                     className="btn-close"
-                    aria-label="Close"
                     disabled={isDeleting}
                     onClick={() => !isDeleting && setShowDeleteModal(false)}
                   ></button>
                 </div>
+
                 <div className="modal-body">
                   <p>
-                    Are you sure you want to delete this user{" "}
+                    Are you sure you want to delete{" "}
                     <strong>{user?.name}</strong>? This action cannot be undone.
                   </p>
                 </div>
+
                 <div className="modal-footer">
                   <button
                     type="button"
@@ -278,7 +282,71 @@ const UserView = () => {
               </div>
             </div>
           </div>
-          {/* backdrop */}
+          <div className="modal-backdrop fade show"></div>
+        </>
+      )}
+
+      {/* STATUS CHANGE MODAL */}
+      {showStatusModal && (
+        <>
+          <div className="modal fade show d-block" tabIndex="-1" role="dialog">
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    {targetStatus ? (
+                      <>
+                        <i className="bi bi-check-circle text-success me-2" />
+                        Allow Access
+                      </>
+                    ) : (
+                      <>
+                        <i className="bi bi-slash-circle text-warning me-2" />
+                        Revoke Access
+                      </>
+                    )}
+                  </h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    disabled={isUpdatingStatus}
+                    onClick={() => !isUpdatingStatus && setShowStatusModal(false)}
+                  ></button>
+                </div>
+
+                <div className="modal-body">
+                  <p>
+                    Are you sure you want to{" "}
+                    <strong>{targetStatus ? "ALLOW" : "REVOKE"}</strong>{" "}
+                    access for <strong>{user?.name}</strong>?
+                  </p>
+                </div>
+
+                <div className="modal-footer">
+                  <button
+                    className="btn btn-secondary"
+                    disabled={isUpdatingStatus}
+                    onClick={() => setShowStatusModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className={`btn ${
+                      targetStatus ? "btn-success" : "btn-warning"
+                    }`}
+                    disabled={isUpdatingStatus}
+                    onClick={confirmStatusUpdate}
+                  >
+                    {isUpdatingStatus
+                      ? "Updating..."
+                      : targetStatus
+                      ? "Allow"
+                      : "Revoke"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
           <div className="modal-backdrop fade show"></div>
         </>
       )}

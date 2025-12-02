@@ -1,15 +1,5 @@
 import { Controller } from "react-hook-form";
 
-/**
- * A beautifully styled universal form input component
- * Supports:
- * - text, number, email, date, password
- * - textarea
- * - select
- * - error messages
- * - inline help text
- * - icons (optional)
- */
 const FormInput = ({
   control,
   name,
@@ -19,8 +9,9 @@ const FormInput = ({
   placeholder,
   rules,
   isTextArea = false,
-  icon, // OPTIONAL icon support: <i className="bi bi-person" />
-  helpText, // OPTIONAL note under field
+  icon,
+  helpText,
+  onFieldChange,
   ...rest
 }) => (
   <Controller
@@ -30,9 +21,13 @@ const FormInput = ({
     render={({ field, fieldState }) => {
       const hasError = Boolean(fieldState.error);
 
+      const handleChange = (e) => {
+        field.onChange(e);
+        if (onFieldChange) onFieldChange(name, e.target.value);
+      };
+
       return (
         <div className="mb-4">
-          {/* Label */}
           {label && (
             <label htmlFor={name} className="form-label fw-semibold">
               {label}
@@ -40,51 +35,53 @@ const FormInput = ({
           )}
 
           <div className="input-group">
-            {/* Optional Icon */}
             {icon && (
               <span className="input-group-text bg-light">
-                {typeof icon === "string" ? <i className={icon} /> : icon}
+                <i className={icon}></i>
               </span>
             )}
 
-            {/* Select Field */}
             {type === "select" ? (
               <select
                 {...field}
                 id={name}
                 className={`form-select ${hasError ? "is-invalid" : ""}`}
+                onChange={handleChange}
                 {...rest}
               >
                 <option value="">Select</option>
-                {options.map((opt) => (
-                  <option key={opt.value || opt} value={opt.value || opt}>
-                    {opt.label || opt}
+
+                {options.map((opt, index) => (
+                  <option
+                    key={`${name}-opt-${opt.value || index}`}
+                    value={opt.value}
+                  >
+                    {opt.label}
                   </option>
                 ))}
               </select>
             ) : isTextArea ? (
-              // Textarea Field
               <textarea
                 {...field}
                 id={name}
                 className={`form-control ${hasError ? "is-invalid" : ""}`}
                 placeholder={placeholder}
                 rows={rest.rows || 3}
+                onChange={handleChange}
                 {...rest}
               />
             ) : (
-              // Input Field
               <input
                 {...field}
                 id={name}
                 type={type}
                 className={`form-control ${hasError ? "is-invalid" : ""}`}
                 placeholder={placeholder}
+                onChange={handleChange}
                 {...rest}
               />
             )}
 
-            {/* Error Message */}
             {hasError && (
               <div className="invalid-feedback d-block">
                 {fieldState.error.message}
@@ -92,10 +89,7 @@ const FormInput = ({
             )}
           </div>
 
-          {/* Help Text (Optional) */}
-          {helpText && !hasError && (
-            <div className="form-text">{helpText}</div>
-          )}
+          {helpText && <div className="form-text">{helpText}</div>}
         </div>
       );
     }}

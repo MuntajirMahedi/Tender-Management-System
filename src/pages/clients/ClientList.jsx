@@ -8,6 +8,7 @@ import { clientApi } from "../../api";
 import { CLIENT_STATUSES } from "../../utils/constants";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
+import useDebounce from "../../hooks/useDebounce";
 
 const columns = [
   {
@@ -27,7 +28,7 @@ const columns = [
     dataIndex: "mobile",
     render: (value, row) => (
       <div>
-        <div>{value}</div>
+        <div>{value || "—"}</div>
         <div className="text-muted small">{row.email || "NA"}</div>
       </div>
     )
@@ -63,12 +64,18 @@ const ClientList = () => {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // filters
-  const [statusFilter, setStatusFilter] = useState("");
+  // Modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteId, setDeleteId] = useState(null);
+  const [deleteName, setDeleteName] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  // pagination
-  const [page, setPage] = useState(1); // 1-based
-  const [pageSize, setPageSize] = useState(10); // 1, 5, 10, 20, 50, 100
+  const [statusFilter, setStatusFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     const load = async () => {
@@ -77,13 +84,16 @@ const ClientList = () => {
         const res = await clientApi.getClients();
 
         const list =
-          Array.isArray(res?.clients) ? res.clients :
-          Array.isArray(res?.data) ? res.data :
-          Array.isArray(res) ? res : [];
+          Array.isArray(res?.clients)
+            ? res.clients
+            : Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res)
+            ? res
+            : [];
 
         setClients(list);
       } catch (err) {
-        console.error("Unable to load clients", err);
         toast.error("Unable to load clients");
         setClients([]);
       } finally {
@@ -94,71 +104,72 @@ const ClientList = () => {
     load();
   }, []);
 
-  // filtered clients
+  // Filter + Search combined
   const filtered = useMemo(() => {
+    const term = debouncedSearch.trim().toLowerCase();
+
     return clients.filter((c) => {
       if (statusFilter && c.status !== statusFilter) return false;
-      return true;
+
+      if (!term) return true;
+
+      return (
+        (c.name || "").toLowerCase().includes(term) ||
+        (c.companyName || "").toLowerCase().includes(term) ||
+        (c.mobile || "").toLowerCase().includes(term) ||
+        (c.email || "").toLowerCase().includes(term) ||
+        (c.clientCode || "").toLowerCase().includes(term)
+      );
     });
-  }, [clients, statusFilter]);
+  }, [clients, statusFilter, debouncedSearch]);
 
   const total = filtered.length;
-  const totalPages = total === 0 ? 1 : Math.ceil(total / pageSize);
-  const currentPage = total === 0 ? 1 : Math.min(page, totalPages);
-
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, total);
   const paginatedClients = filtered.slice(startIndex, endIndex);
 
-  const handlePageSizeChange = (e) => {
-    const value = Number(e.target.value) || 10;
-    setPageSize(value);
-    setPage(1);
+  /* -------------------------
+      OPEN DELETE MODAL
+  ------------------------- */
+  const confirmDelete = (id, name) => {
+    setDeleteId(id);
+    setDeleteName(name);
+    setShowDeleteModal(true);
   };
 
-  const handlePrev = () => {
-    if (currentPage > 1) setPage(currentPage - 1);
-  };
-
-  const handleNext = () => {
-    if (currentPage < totalPages) setPage(currentPage + 1);
-  };
-
-  const handleDelete = async (id, name) => {
-    if (!canDelete) return;
-
-    const confirmed = window.confirm(
-      `Are you sure you want to delete client "${name}"?`
-    );
-    if (!confirmed) return;
-
+  /* -------------------------
+      ACTUAL DELETE FUNCTION
+  ------------------------- */
+  const handleDelete = async () => {
     try {
-      await clientApi.deleteClient(id);
-      toast.success(`Client "${name}" deleted successfully`);
+      setIsDeleting(true);
+
+      await clientApi.deleteClient(deleteId);
+
+      toast.success(`Client "${deleteName}" deleted`);
 
       setClients((prev) =>
-        prev.filter((c) => (c._id || c.id) !== id)
+        prev.filter((c) => (c._id || c.id) !== deleteId)
       );
+
+      setShowDeleteModal(false);
     } catch (err) {
-      console.error("Failed to delete client", err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to delete client";
-      toast.error(msg);
+      toast.error("Failed to delete client");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <RequirePermission permission="client:view">
       <div>
-        {/* HEADER ROW */}
+        {/* HEADER */}
         <div className="d-flex justify-content-between align-items-center mb-3">
           <div>
             <h4 className="mb-0">Clients</h4>
-            <small className="text-muted">
-              Manage all your active and prospective clients
-            </small>
+            <small className="text-muted">Manage all your clients</small>
           </div>
 
           {canCreate && (
@@ -169,13 +180,11 @@ const ClientList = () => {
           )}
         </div>
 
-        {/* FILTERS ROW */}
+        {/* FILTERS */}
         <div className="card mb-3">
           <div className="card-body row g-3 align-items-end">
             <div className="col-sm-4 col-md-3">
-              <label className="form-label small text-muted mb-1">
-                Status
-              </label>
+              <label className="form-label small text-muted mb-1">Status</label>
               <select
                 className="form-select form-select-sm"
                 value={statusFilter}
@@ -185,17 +194,30 @@ const ClientList = () => {
                 }}
               >
                 <option value="">All</option>
-                {CLIENT_STATUSES.map((st) => (
-                  <option key={st} value={st}>
-                    {st}
+                {CLIENT_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
                   </option>
                 ))}
               </select>
             </div>
+
+            <div className="col-sm-8 col-md-4">
+              <label className="form-label small text-muted mb-1">Search</label>
+              <input
+                className="form-control form-control-sm"
+                placeholder="Search name, company, mobile, email, client code"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
           </div>
         </div>
 
-        {/* TABLE CARD */}
+        {/* TABLE */}
         <div className="card shadow-sm">
           <div className="card-body p-0">
             {loading ? (
@@ -210,34 +232,31 @@ const ClientList = () => {
                       {columns.map((col) => (
                         <th key={col.key}>{col.label}</th>
                       ))}
-                      <th style={{ width: "180px" }}>Actions</th>
+                      <th width="180">Actions</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {paginatedClients.map((row) => {
                       const rowId = row._id || row.id;
+
                       return (
                         <tr key={rowId}>
                           {columns.map((col) => {
-                            let rawValue;
-                            if (col.dataIndex === "assignedSales") {
-                              rawValue = row.assignedSales;
-                            } else if (col.dataIndex === "assignedCare") {
-                              rawValue = row.assignedCare;
-                            } else {
-                              rawValue = row[col.dataIndex];
-                            }
+                            let rawValue =
+                              col.dataIndex === "assignedSales"
+                                ? row.assignedSales
+                                : col.dataIndex === "assignedCare"
+                                ? row.assignedCare
+                                : row[col.dataIndex];
 
                             return (
                               <td key={col.key}>
-                                {col.render
-                                  ? col.render(rawValue, row)
-                                  : rawValue}
+                                {col.render ? col.render(rawValue, row) : rawValue}
                               </td>
                             );
                           })}
 
-                          {/* Actions */}
                           <td>
                             <div className="btn-group btn-group-sm">
                               {canView && (
@@ -262,9 +281,7 @@ const ClientList = () => {
                                 <button
                                   type="button"
                                   className="btn btn-outline-danger"
-                                  onClick={() =>
-                                    handleDelete(rowId, row.name)
-                                  }
+                                  onClick={() => confirmDelete(rowId, row.name)}
                                 >
                                   Delete
                                 </button>
@@ -280,59 +297,110 @@ const ClientList = () => {
             )}
           </div>
 
-          {/* PAGINATION FOOTER */}
+          {/* PAGINATION */}
           {!loading && total > 0 && (
-            <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
-              {/* left: page size + info */}
+            <div className="card-footer d-flex justify-content-between align-items-center">
+
               <div className="d-flex align-items-center gap-2">
                 <span className="text-muted small">Show</span>
+
                 <select
                   className="form-select form-select-sm"
                   style={{ width: "auto" }}
                   value={pageSize}
-                  onChange={handlePageSizeChange}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
                 >
-                  <option value={1}>1</option>
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
+                  {[5, 10, 20, 50, 100].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
                 </select>
-                <span className="text-muted small">entries</span>
 
-                <span className="text-muted small ms-3">
-                  Showing{" "}
-                  {total === 0
-                    ? "0"
-                    : `${startIndex + 1}–${endIndex}`}{" "}
-                  of {total} entries
+                <span className="text-muted small">
+                  Showing {startIndex + 1}–{endIndex} of {total}
                 </span>
               </div>
 
-              {/* right: pagination buttons */}
               <div className="d-flex align-items-center gap-2">
                 <button
                   className="btn btn-sm btn-outline-secondary"
-                  onClick={handlePrev}
-                  disabled={currentPage <= 1}
+                  disabled={currentPage === 1}
+                  onClick={() => setPage(currentPage - 1)}
                 >
                   Prev
                 </button>
+
                 <span className="small">
                   Page {currentPage} of {totalPages}
                 </span>
+
                 <button
                   className="btn btn-sm btn-outline-secondary"
-                  onClick={handleNext}
-                  disabled={currentPage >= totalPages}
+                  disabled={currentPage === totalPages}
+                  onClick={() => setPage(currentPage + 1)}
                 >
                   Next
                 </button>
               </div>
+
             </div>
           )}
         </div>
+
+        {/* ---------- DELETE CONFIRM MODAL ---------- */}
+        {showDeleteModal && (
+          <>
+            <div className="modal fade show d-block">
+              <div className="modal-dialog modal-dialog-centered">
+                <div className="modal-content">
+
+                  <div className="modal-header">
+                    <h5 className="modal-title text-danger">
+                      <i className="bi bi-exclamation-triangle-fill me-2"></i>
+                      Confirm Delete
+                    </h5>
+                    <button
+                      className="btn-close"
+                      disabled={isDeleting}
+                      onClick={() => setShowDeleteModal(false)}
+                    ></button>
+                  </div>
+
+                  <div className="modal-body">
+                    Are you sure you want to delete client  
+                    <strong> {deleteName} </strong>?
+                  </div>
+
+                  <div className="modal-footer">
+                    <button
+                      className="btn btn-secondary"
+                      disabled={isDeleting}
+                      onClick={() => setShowDeleteModal(false)}
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      className="btn btn-danger"
+                      disabled={isDeleting}
+                      onClick={handleDelete}
+                    >
+                      {isDeleting ? "Deleting..." : "Yes, Delete"}
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-backdrop fade show"></div>
+          </>
+        )}
+
       </div>
     </RequirePermission>
   );

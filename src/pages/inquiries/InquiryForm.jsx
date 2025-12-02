@@ -9,7 +9,7 @@ import {
   INQUIRY_STATUSES
 } from "../../utils/constants";
 
-// ⭐ VALIDATION SCHEMA (as per your requirement)
+// ⭐ VALIDATION SCHEMA
 const schema = yup.object({
   name: yup.string().required("Prospect name is required"),
 
@@ -32,7 +32,7 @@ const schema = yup.object({
   status: yup.string().required("Status is required")
 });
 
-// Default values
+// ⭐ DEFAULT VALUES
 const defaultValues = {
   name: "",
   companyName: "",
@@ -49,7 +49,7 @@ const defaultValues = {
 const InquiryForm = () => {
   const [users, setUsers] = useState([]);
 
-  // Fetch users for dropdown
+  // Fetch users
   useEffect(() => {
     userApi
       .getUsers()
@@ -69,35 +69,37 @@ const InquiryForm = () => {
     [users]
   );
 
-  // Fields definition
+  // ⭐ PREPARE OPTIONS PROPERLY
+  const interestLevelOptions = INQUIRY_INTEREST_LEVELS.map((lvl) => ({
+    value: lvl,
+    label: lvl
+  }));
+
+  const statusOptions = INQUIRY_STATUSES.map((st) => ({
+    value: st,
+    label: st
+  }));
+
+  // ⭐ FIELDS CONFIG
   const fields = [
     { name: "name", label: "Prospect Name *" },
-
     { name: "companyName", label: "Company (Optional)" },
-
     { name: "mobile", label: "Mobile *" },
-
     { name: "email", label: "Email *", type: "email" },
-
-    { name: "source", label: "Source (Optional)" },
-    { name: "name", label: "Prospect Name *" },
-    { name: "companyName", label: "Company (Optional)" },
-    { name: "mobile", label: "Mobile *" },
-    { name: "email", label: "Email (Optional)", type: "email" },
     { name: "source", label: "Source (Optional)" },
 
     {
       name: "interestLevel",
       label: "Interest Level *",
       type: "select",
-      options: INQUIRY_INTEREST_LEVELS
+      options: interestLevelOptions
     },
 
     {
       name: "status",
       label: "Status *",
       type: "select",
-      options: INQUIRY_STATUSES
+      options: statusOptions
     },
 
     {
@@ -120,7 +122,41 @@ const InquiryForm = () => {
       col: "col-12"
     }
   ];
-   
+
+  // ⭐ CREATE
+  const createFn = async (payload) => {
+    try {
+      const res = await inquiryApi.createInquiry(payload);
+      toast.success("Inquiry created successfully");
+      return res;
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to create inquiry");
+      throw err;
+    }
+  };
+
+  // ⭐ UPDATE
+  const updateFn = async (id, payload) => {
+    try {
+      const res = await inquiryApi.updateInquiry(id, payload);
+      toast.success("Inquiry updated successfully");
+      return res;
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to update inquiry");
+      throw err;
+    }
+  };
+
+  // ⭐ FETCH FOR EDIT
+  const fetcher = async (id) => {
+    const { inquiry } = await inquiryApi.getInquiry(id);
+
+    return {
+      ...defaultValues,
+      ...inquiry,
+      assignedTo: inquiry.assignedTo?._id || inquiry.assignedTo || ""
+    };
+  };
 
   return (
     <CrudFormPage
@@ -128,9 +164,9 @@ const InquiryForm = () => {
       schema={schema}
       defaultValues={defaultValues}
       fields={fields}
-      createFn={createInquiry}              // ✅ wrapped
-      updateFn={updateInquiry}              // ✅ wrapped
-      fetcher={fetchInquiry}                // ✅ mapped + prefill
+      createFn={createFn}
+      updateFn={updateFn}
+      fetcher={fetcher}
       redirectPath="/inquiries"
     />
   );
