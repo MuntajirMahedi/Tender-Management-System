@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
+import { toast } from "react-toastify";          // ✅ toast import
 import useAuth from "../../hooks/useAuth";
 
 // ----------------------
@@ -60,10 +61,30 @@ const Login = () => {
       // sanitize values
       values.identifier = values.identifier.trim();
 
+      // call login API from useAuth
       await login(values);
+
+      // ✅ success toast
+      toast.success("Login successful!", {
+        position: "top-right",
+        autoClose: 2000
+      });
+
+      // redirect to dashboard
       navigate("/dashboard");
     } catch (error) {
       console.error("Login failed", error);
+
+      // ✅ error toast
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Invalid login credentials!";
+
+      toast.error(message, {
+        position: "top-right",
+        autoClose: 2500
+      });
     }
   };
 
@@ -83,7 +104,7 @@ const Login = () => {
           </div>
 
           {/* ---------------------- */}
-          {/*   FORM START            */}
+          {/*   FORM START           */}
           {/* ---------------------- */}
           <form onSubmit={handleSubmit(onSubmit)}>
             {/* Identifier field */}
@@ -92,7 +113,9 @@ const Login = () => {
               <input
                 type="text"
                 autoComplete="username"
-                className={`form-control ${errors.identifier ? "is-invalid" : ""}`}
+                className={`form-control ${
+                  errors.identifier ? "is-invalid" : ""
+                }`}
                 placeholder="owner@tms.io or 9876543210"
                 {...register("identifier")}
                 onBlur={(e) => {
@@ -112,7 +135,9 @@ const Login = () => {
               <input
                 type="password"
                 autoComplete="current-password"
-                className={`form-control ${errors.password ? "is-invalid" : ""}`}
+                className={`form-control ${
+                  errors.password ? "is-invalid" : ""
+                }`}
                 placeholder="••••••••"
                 {...register("password")}
               />
@@ -126,7 +151,11 @@ const Login = () => {
             {/* remember + forgot */}
             <div className="d-flex justify-content-between align-items-center mb-3">
               <div className="form-check">
-                <input className="form-check-input" type="checkbox" id="remember" />
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id="remember"
+                />
                 <label className="form-check-label" htmlFor="remember">
                   Remember me
                 </label>

@@ -1,14 +1,15 @@
 import CrudFormPage from "../common/CrudFormPage";
 import * as yup from "yup";
 import { userApi } from "../../api";
+import { toast } from "react-toastify";
 
-// Validation Schema
+// Validation Schema — PASSWORD REQUIRED
 const schema = yup.object({
   name: yup.string().required("Name is required"),
   email: yup.string().email("Invalid email").required("Email is required"),
   mobile: yup.string().required("Mobile is required"),
   role: yup.string().required("Role is required"),
-  password: yup.string().notRequired()   // password required only on create
+  password: yup.string().required("Password is required")
 });
 
 // Default values
@@ -29,15 +30,13 @@ const roleOptions = [
   { value: "viewer", label: "Viewer" }
 ];
 
-// Fields with proper labels
+// Form fields
 const fields = [
   { name: "name", label: "Full Name *" },
   { name: "email", label: "Email *", type: "email" },
   { name: "mobile", label: "Mobile *" },
   { name: "role", label: "Role *", type: "select", options: roleOptions },
-
-  // password optional on edit
-  { name: "password", label: "Password (Optional)", type: "password" }
+  { name: "password", label: "Password *", type: "password" } // required now
 ];
 
 const UserForm = () => (
@@ -46,21 +45,44 @@ const UserForm = () => (
     schema={schema}
     defaultValues={defaultValues}
     fields={fields}
+    redirectPath="/users"
+
+    // CREATE USER WITH TOAST
     createFn={async (payload) => {
-      return userApi.createUser(payload); // password required here
+      try {
+        const res = await userApi.createUser(payload);
+        toast.success("User created successfully!");
+        return res;
+      } catch (err) {
+        toast.error(
+          err?.response?.data?.message || "Failed to create user"
+        );
+        throw err;
+      }
     }}
+
+    // UPDATE USER WITH TOAST
     updateFn={async (id, payload) => {
-      if (!payload.password) delete payload.password; // don't send empty password
-      return userApi.updateUser(id, payload);
+      try {
+        const res = await userApi.updateUser(id, payload);
+        toast.success("User updated successfully!");
+        return res;
+      } catch (err) {
+        toast.error(
+          err?.response?.data?.message || "Failed to update user"
+        );
+        throw err;
+      }
     }}
+
+    // Fetch + prefill
     fetcher={async (id) => {
       const { user } = await userApi.getUser(id);
       return {
         ...user,
-        password: "" // don’t prefill password
+        password: "" // must re-enter (secure)
       };
     }}
-    redirectPath="/users"
   />
 );
 

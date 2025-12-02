@@ -4,7 +4,7 @@ const Pagination = ({
   total = 0,
   onPageChange,
   onPageSizeChange,
-  pageSizes = [10, 20, 50, 100]
+  pageSizes = [5, 10, 20, 50, 100]
 }) => {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 

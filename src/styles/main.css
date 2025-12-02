@@ -250,45 +250,76 @@ a {
   border-radius: 14px;
 }
 
-/* ================================
-   MOBILE RESPONSIVE
-================================ */
-@media (max-width: 992px) {
-  /* Sidebar hidden on mobile */
-  .sidebar {
-    transform: translateX(-100%);
-    width: 260px;
-  }
-
-  /* Sidebar open on mobile */
-  .sidebar.open {
-    transform: translateX(0);
-  }
-
-  /* Main content full width */
-  .main-content {
-    margin-left: 0;
-    width: 100%;
-  }
-
-  /* Disable scroll when sidebar open */
-  body.sidebar-open {
-    overflow: hidden;
-  }
+/* Make the app fill the viewport and stop the body from scrolling */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
 }
 
-/* Overlay when sidebar active */
-.mobile-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  z-index: 1500;
-  opacity: 0;
-  visibility: hidden;
-  transition: all 0.3s ease;
+body {
+  overflow: hidden; /* important: we control scroll inside layout only */
 }
 
-.mobile-overlay.active {
-  opacity: 1;
-  visibility: visible;
+/* === LAYOUT WRAPPER === */
+.app-shell {
+  display: flex;
+  height: 100vh;      /* full screen */
+  overflow: hidden;   /* don't let this wrapper scroll */
+}
+
+/* === SIDEBAR === */
+.sidebar {
+  width: 260px;        /* or your existing width */
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 100vh;   /* limit to viewport height */
+}
+
+/* scrollable area INSIDE sidebar */
+.sidebar-nav {
+  flex: 1 1 auto;
+  overflow-y: auto;    /* ⭐ sidebar scroll */
+}
+
+/* user info/footer at bottom of sidebar */
+.sidebar > .px-3.py-3 {
+  flex-shrink: 0;
+}
+
+/* === MAIN CONTENT AREA === */
+.main-content {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  max-height: 100vh;
+  overflow: hidden;    /* don't scroll this wrapper, only inside content-wrapper */
+}
+
+/* Topbar (assuming it has .topbar class inside component) */
+.topbar {
+  flex-shrink: 0;
+}
+
+/* Page content area */
+.content-wrapper {
+  flex: 1 1 auto;
+  overflow-y: auto;    /* ⭐ main area scroll */
+  padding: 1.5rem;     /* keep your spacing */
+}
+/* Sidebar scroll behavior */
+.sidebar-nav {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-bottom: 1rem;
+  
+  /* Hide scrollbar for all browsers */
+  -ms-overflow-style: none; 
+  scrollbar-width: none;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  display: none;
 }

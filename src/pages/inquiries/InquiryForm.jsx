@@ -1,6 +1,7 @@
 // src/pages/inquiries/InquiryForm.jsx
 import { useMemo, useState, useEffect } from "react";
 import * as yup from "yup";
+import { toast } from "react-toastify";
 import CrudFormPage from "../common/CrudFormPage";
 import { inquiryApi, userApi } from "../../api";
 import {
@@ -53,7 +54,10 @@ const InquiryForm = () => {
     userApi
       .getUsers()
       .then((res) => setUsers(res.users || []))
-      .catch((error) => console.error("Unable to load users", error));
+      .catch((error) => {
+        console.error("Unable to load users", error);
+        toast.error("Unable to load users for assignment");
+      });
   }, []);
 
   const userOptions = useMemo(
@@ -65,7 +69,7 @@ const InquiryForm = () => {
     [users]
   );
 
-  // ⭐ UPDATED FIELDS (required + optional)
+  // Fields definition
   const fields = [
     { name: "name", label: "Prospect Name *" },
 
@@ -75,6 +79,11 @@ const InquiryForm = () => {
 
     { name: "email", label: "Email *", type: "email" },
 
+    { name: "source", label: "Source (Optional)" },
+    { name: "name", label: "Prospect Name *" },
+    { name: "companyName", label: "Company (Optional)" },
+    { name: "mobile", label: "Mobile *" },
+    { name: "email", label: "Email (Optional)", type: "email" },
     { name: "source", label: "Source (Optional)" },
 
     {
@@ -111,6 +120,37 @@ const InquiryForm = () => {
       col: "col-12"
     }
   ];
+    {
+      name: "interestLevel",
+      label: "Interest Level (Default: Unknown)",
+      type: "select",
+      options: INQUIRY_INTEREST_LEVELS
+    },
+    {
+      name: "status",
+      label: "Status (Default: New)",
+      type: "select",
+      options: INQUIRY_STATUSES
+    },
+    {
+      name: "assignedTo",
+      // ⬇ changed label to required
+      label: "Assigned To *",
+      type: "select",
+      options: userOptions
+    },
+    {
+      name: "nextFollowUpDate",
+      label: "Next Follow-Up (Optional)",
+      type: "date"
+    },
+    {
+      name: "remarks",
+      label: "Remarks (Optional)",
+      isTextArea: true,
+      col: "col-12"
+    }
+  ];
 
   return (
     <CrudFormPage
@@ -118,12 +158,9 @@ const InquiryForm = () => {
       schema={schema}
       defaultValues={defaultValues}
       fields={fields}
-      createFn={inquiryApi.createInquiry}
-      updateFn={(id, payload) => inquiryApi.updateInquiry(id, payload)}
-      fetcher={async (id) => {
-        const { inquiry } = await inquiryApi.getInquiry(id);
-        return inquiry;
-      }}
+      createFn={createInquiry}              // ✅ wrapped
+      updateFn={updateInquiry}              // ✅ wrapped
+      fetcher={fetchInquiry}                // ✅ mapped + prefill
       redirectPath="/inquiries"
     />
   );

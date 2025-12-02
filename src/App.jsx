@@ -71,8 +71,11 @@ import AuditLogs from "./pages/audit/AuditLogs";
 import Settings from "./pages/settings/Settings";
 import Notifications from "./pages/notifications/Notifications";
 
+
+
 const App = () => (
   <Routes>
+
     <Route path="/login" element={<Login />} />
     <Route path="/forgot-password" element={<ForgotPassword />} />
     <Route path="/reset-password" element={<ResetPassword />} />
@@ -127,6 +130,8 @@ const App = () => (
       <Route path="renewals" element={<RenewalList />} />
       <Route path="renewals/new" element={<RenewalForm />} />
       <Route path="renewals/:id" element={<RenewalView />} />
+      <Route path="renewals/:id/edit" element={<RenewalForm />} />
+
 
       <Route path="reports" element={<Reports />} />
 
@@ -153,6 +158,7 @@ const App = () => (
     </Route>
 
     <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
   </Routes>
 );
 

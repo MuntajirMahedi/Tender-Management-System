@@ -1,22 +1,44 @@
+// src/pages/inquiries/InquiryView.jsx
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { inquiryApi } from "../../api";
 import PageHeader from "../../components/PageHeader";
 import StatusBadge from "../../components/StatusBadge";
 import { formatDate, formatDateTime } from "../../utils/formatters";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
+import { toast } from "react-toastify";
+
+// 🔽 Status options for "Status After" dropdown
+const STATUS_OPTIONS = [
+  "New",
+  "Prospect",
+  "Cold",
+  "Not Connected",
+  "Following",
+  "Converted",
+  "Lost"
+];
+
+// 🔽 Helper to get today's date in YYYY-MM-DD
+const getToday = () => new Date().toISOString().slice(0, 10);
 
 const InquiryView = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
+
   const [inquiry, setInquiry] = useState(null);
   const [followups, setFollowups] = useState([]);
 
   const [followupForm, setFollowupForm] = useState({
-    followUpDate: "",
-    statusAfter: "",
+    followUpDate: getToday(), // ✅ default: today
+    statusAfter: "New",       // ✅ default: New
     remarks: ""
   });
+
+  // 🔽 state for delete confirm modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { can } = usePermission();
 
@@ -24,6 +46,7 @@ const InquiryView = () => {
   const canUpdate = can("inquiry:update");
   const canFollowup = can("inquiry:followup");
   const canConvert = can("inquiry:convert");
+  const canDelete = can("inquiry:delete"); // ✅ delete permission
 
   const loadDetails = async () => {
     try {
@@ -35,32 +58,96 @@ const InquiryView = () => {
       setFollowups(followups || []);
     } catch (err) {
       console.error("Unable to load inquiry", err);
+      toast.error("Unable to load inquiry details");
     }
   };
 
   useEffect(() => {
-    loadDetails();
-  }, [id]);
+    if (canView) {
+      loadDetails();
+    }
+  }, [id, canView]);
 
   const handleFollowupSubmit = async (e) => {
     e.preventDefault();
+
+    // ✅ basic validation before calling API
+    if (!followupForm.followUpDate) {
+      toast.error("Follow-up date is required");
+      return;
+    }
+    if (!followupForm.statusAfter) {
+      toast.error("Status after is required");
+      return;
+    }
+
     try {
       await inquiryApi.addFollowup(id, followupForm);
-      setFollowupForm({ followUpDate: "", statusAfter: "", remarks: "" });
+      toast.success("Follow-up added successfully");
+
+      // Reset: still today + New
+      setFollowupForm({
+        followUpDate: getToday(),
+        statusAfter: "New",
+        remarks: ""
+      });
+
       loadDetails();
     } catch (err) {
       console.error("Unable to add follow-up", err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Unable to add follow-up";
+      toast.error(msg);
     }
   };
 
   const handleConvert = async () => {
     try {
       await inquiryApi.convertToClient(id);
+      toast.success("Inquiry converted to client successfully");
       loadDetails();
     } catch (err) {
       console.error("Unable to convert inquiry", err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Unable to convert inquiry";
+      toast.error(msg);
     }
   };
+
+  // 🔽 called when user CONFIRMS delete in modal
+  const handleDelete = async () => {
+    try {
+      setIsDeleting(true);
+
+      await inquiryApi.deleteInquiry(id);
+      toast.success("Inquiry deleted successfully");
+
+      // close modal and go back to list
+      setShowDeleteModal(false);
+      navigate("/inquiries");
+    } catch (err) {
+      console.error("Unable to delete inquiry", err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Unable to delete inquiry";
+      toast.error(msg);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  if (!canView) {
+    return (
+      <RequirePermission permission="inquiry:view">
+        <p>Checking permissions...</p>
+      </RequirePermission>
+    );
+  }
 
   if (!inquiry) return <p>Loading...</p>;
 
@@ -73,15 +160,15 @@ const InquiryView = () => {
           actions={[
             // ✏️ Edit only if allowed
             canUpdate && (
-                            <Link
-                              key="edit"
-                              to={`/inquiries/${id}/edit`}
-                              className="btn btn-outline-primary"
-                            >
-                              <i className="bi bi-pencil-square me-2"></i>
-                              Edit
-                            </Link>
-                          ),
+              <Link
+                key="edit"
+                to={`/inquiries/${id}/edit`}
+                className="btn btn-outline-primary"
+              >
+                <i className="bi bi-pencil-square me-2"></i>
+                Edit
+              </Link>
+            ),
 
             // 🔄 Convert only if allowed and not yet converted
             canConvert &&
@@ -93,7 +180,19 @@ const InquiryView = () => {
                 >
                   Convert to Client
                 </button>
-              )
+              ),
+
+            // 🗑️ Delete only if allowed
+            canDelete && (
+              <button
+                key="delete"
+                className="btn btn-outline-danger"
+                onClick={() => setShowDeleteModal(true)} // 👈 open modal
+              >
+                <i className="bi bi-trash me-2"></i>
+                Delete
+              </button>
+            )
           ]}
         />
 
@@ -176,8 +275,8 @@ const InquiryView = () => {
 
                 <div className="col-md-4">
                   <label className="form-label">Status After</label>
-                  <input
-                    className="form-control"
+                  <select
+                    className="form-select"
                     value={followupForm.statusAfter}
                     onChange={(e) =>
                       setFollowupForm({
@@ -185,7 +284,13 @@ const InquiryView = () => {
                         statusAfter: e.target.value
                       })
                     }
-                  />
+                  >
+                    {STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="col-md-12">
@@ -249,6 +354,63 @@ const InquiryView = () => {
             </div>
           </div>
         </div>
+
+        {/* ----------- DELETE CONFIRM MODAL ----------- */}
+        {showDeleteModal && (
+          <>
+            <div
+              className="modal fade show d-block"
+              tabIndex="-1"
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className="modal-dialog modal-dialog-centered" role="document">
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title text-danger">
+                      <i className="bi bi-exclamation-triangle-fill me-2" />
+                      Confirm Delete
+                    </h5>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      aria-label="Close"
+                      disabled={isDeleting}
+                      onClick={() => !isDeleting && setShowDeleteModal(false)}
+                    ></button>
+                  </div>
+                  <div className="modal-body">
+                    <p>
+                      Are you sure you want to delete this inquiry{" "}
+                      <strong>{inquiry?.name}</strong>? This action cannot be
+                      undone.
+                    </p>
+                  </div>
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={isDeleting}
+                      onClick={() => setShowDeleteModal(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? "Deleting..." : "Yes, delete"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* backdrop */}
+            <div className="modal-backdrop fade show"></div>
+          </>
+        )}
       </div>
     </RequirePermission>
   );
