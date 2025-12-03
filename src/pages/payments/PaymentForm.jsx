@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { toast } from "react-toastify";
+import { useSearchParams } from "react-router-dom";
+
 import CrudFormPage from "../common/CrudFormPage";
 import { clientApi, paymentApi, planApi } from "../../api";
 import { PAYMENT_MODES } from "../../utils/constants";
@@ -30,7 +32,13 @@ const defaultValues = {
 const PaymentForm = () => {
   const [clients, setClients] = useState([]);
   const [plans, setPlans] = useState([]);
+
   const [selectedClientId, setSelectedClientId] = useState("");
+
+  // ⭐ URL auto-fill reading
+  const [searchParams] = useSearchParams();
+  const clientIdFromURL = searchParams.get("clientId");
+  const planIdFromURL = searchParams.get("planId");
 
   useEffect(() => {
     clientApi.getClients().then((res) => setClients(res.clients || []));
@@ -47,7 +55,7 @@ const PaymentForm = () => {
     [clients]
   );
 
-  // Plans filtered by client
+  // Plans filtered by selected client
   const planOptions = useMemo(() => {
     if (!selectedClientId) return [];
     return plans
@@ -58,15 +66,23 @@ const PaymentForm = () => {
       }));
   }, [plans, selectedClientId]);
 
-  // ⭐ FIXED Payment Mode dropdown
-  const paymentModeOptions = useMemo(
-    () =>
-      PAYMENT_MODES.map((m) => ({
-        value: m,
-        label: m,
-      })),
-    []
-  );
+  const paymentModeOptions = PAYMENT_MODES.map((m) => ({
+    value: m,
+    label: m,
+  }));
+
+  // ⭐ AUTO-FILL VALUES
+  const autoFillValues = {
+    clientId: clientIdFromURL || "",
+    planId: planIdFromURL || "",
+  };
+
+  // If client coming from URL, set selected client
+  useEffect(() => {
+    if (clientIdFromURL) {
+      setSelectedClientId(clientIdFromURL);
+    }
+  }, [clientIdFromURL]);
 
   // Form fields
   const fields = [
@@ -90,13 +106,20 @@ const PaymentForm = () => {
       name: "paymentMode",
       label: "Payment Mode *",
       type: "select",
-      options: paymentModeOptions, // ⭐ FIXED HERE
+      options: paymentModeOptions,
     },
 
     { name: "bankName", label: "Bank Name" },
     { name: "transactionId", label: "Transaction ID" },
     { name: "remarks", label: "Remarks", isTextArea: true, col: "col-12" },
   ];
+
+  // Handle client change
+  const handleFieldChange = (name, value) => {
+    if (name === "clientId") {
+      setSelectedClientId(value);
+    }
+  };
 
   // Prefill for edit
   const fetcher = async (id) => {
@@ -116,12 +139,6 @@ const PaymentForm = () => {
     };
   };
 
-  const handleFieldChange = (name, value) => {
-    if (name === "clientId") {
-      setSelectedClientId(value);
-    }
-  };
-
   // Create
   const createFn = async (data) => {
     await paymentApi.createPayment(data);
@@ -136,15 +153,17 @@ const PaymentForm = () => {
 
   return (
     <CrudFormPage
+      key={clientIdFromURL || "normal"} // ⭐ Force re-render for auto-fill
       title="Payment"
       schema={schema}
-      defaultValues={defaultValues}
+      defaultValues={{ ...defaultValues, ...autoFillValues }}
       fields={fields}
       createFn={createFn}
       updateFn={updateFn}
       fetcher={fetcher}
-      redirectPath="/payments"
       onFieldChange={handleFieldChange}
+      redirectPath="/payments"
+      enableReinitialize={true} // ⭐ important for auto-fill
     />
   );
 };

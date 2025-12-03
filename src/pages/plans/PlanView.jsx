@@ -46,6 +46,10 @@ const PlanView = () => {
   const canViewPayment = can("payment:view");
   const canCreatePayment = can("payment:create");
 
+  /* -------------------------------
+      FIXED: SAFE PERMISSION-BASED  
+      API CALLS (No 403 error now)
+  -------------------------------- */
   useEffect(() => {
     if (!canView) return;
 
@@ -53,13 +57,37 @@ const PlanView = () => {
       try {
         setLoading(true);
 
-        const [{ plan }, planTasks, planPayments, planInvoices] =
-          await Promise.all([
-            planApi.getPlan(id),
-            activationApi.getPlanTasks(id),
-            paymentApi.getPlanPayments(id),
-            invoiceApi.getPlanInvoices(id)
-          ]);
+        const requests = [
+          planApi.getPlan(id) // always run
+        ];
+
+        // Only call tasks API if user has permission
+        if (canViewActivation) {
+          requests.push(activationApi.getPlanTasks(id));
+        } else {
+          requests.push({ tasks: [] });
+        }
+
+        // Only call payments API if user has permission
+        if (canViewPayment) {
+          requests.push(paymentApi.getPlanPayments(id));
+        } else {
+          requests.push({ payments: [] });
+        }
+
+        // Only call invoices API if user has permission
+        if (canViewInvoice) {
+          requests.push(invoiceApi.getPlanInvoices(id));
+        } else {
+          requests.push({ invoices: [] });
+        }
+
+        const [
+          { plan },
+          planTasks,
+          planPayments,
+          planInvoices
+        ] = await Promise.all(requests);
 
         setPlan(plan);
         setTasks(planTasks.tasks || []);
@@ -67,6 +95,7 @@ const PlanView = () => {
         setInvoices(planInvoices.invoices || []);
 
       } catch (err) {
+        console.error("Plan load error", err);
         toast.error("Unable to load plan details");
       } finally {
         setLoading(false);
@@ -74,17 +103,16 @@ const PlanView = () => {
     };
 
     load();
-  }, [id, canView]);
+  }, [id, canView, canViewActivation, canViewPayment, canViewInvoice]);
 
+
+  /* DELETE PLAN */
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
       await planApi.deletePlan(id);
-
       toast.success("Plan deleted successfully");
-      setShowDeleteModal(false);
       navigate("/plans");
-
     } catch (err) {
       toast.error("Failed to delete plan");
     } finally {
@@ -137,7 +165,7 @@ const PlanView = () => {
           ].filter(Boolean)}
         />
 
-        {/* SUMMARY */}
+        {/* SUMMARY SECTION */}
         <div className="row g-4 mb-4">
           <div className="col-lg-6">
             <div className="card shadow-sm p-3 h-100">
@@ -164,143 +192,116 @@ const PlanView = () => {
           </div>
         </div>
 
-        {/* ========== ACTIVATION + INVOICE ========== */}
-        <div className="row g-4 mb-4">
+        {/* ******** ACTIVATION ******** */}
+        {canViewActivation && (
+          <div className="mb-4">
+            <div className="card shadow-sm p-3">
+              <div className="d-flex justify-content-between align-items-center mb-3">
+                <h6 className="text-primary mb-0">Activation Tasks</h6>
 
-          {/* ACTIVATION: HIDE IF NO PERMISSION */}
-          {canViewActivation && (
-            <div className="col-lg-6">
-              <div className="card shadow-sm p-3 h-100">
+                <div className="d-flex gap-2">
+                  <Link to={`/activation?planId=${id}`} className="btn btn-sm btn-outline-secondary">
+                    View All
+                  </Link>
 
-                <div className="d-flex justify-content-between align-items-center mb-3">
-                  <h6 className="text-primary mb-0">Activation Tasks</h6>
-
-                  <div className="d-flex gap-2">
+                  {canCreateActivation && (
                     <Link
-                      to={`/activation?planId=${id}`}
-                      className="btn btn-sm btn-outline-secondary"
+                      to={`/activation/new?planId=${id}${clientId ? `&clientId=${clientId}` : ""}`}
+                      className="btn btn-sm btn-primary"
                     >
-                      View All
+                      <i className="bi bi-plus-lg me-1" /> New Task
                     </Link>
-
-                    {canCreateActivation && (
-                      <Link
-                        to={`/activation/new?planId=${id}${clientId ? `&clientId=${clientId}` : ""}`}
-                        className="btn btn-sm btn-primary"
-                      >
-                        <i className="bi bi-plus-lg me-1" />
-                        New Task
-                      </Link>
-                    )}
-                  </div>
+                  )}
                 </div>
-
-                <table className="table table-sm align-middle">
-                  <thead className="table-light">
-                    <tr>
-                      <th>Task</th>
-                      <th>Status</th>
-                      <th>Owner</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tasks.length === 0 ? (
-                      <tr>
-                        <td colSpan={3} className="text-center text-muted py-3">
-                          No activation tasks
-                        </td>
-                      </tr>
-                    ) : (
-                      tasks.map((task) => (
-                        <tr key={task._id || task.id}>
-                          <td>{task.taskName}</td>
-                          <td><StatusBadge status={task.status} /></td>
-                          <td>{task.assignedTo?.name || "—"}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-
               </div>
+
+              <table className="table table-sm align-middle">
+                <thead className="table-light">
+                  <tr>
+                    <th>Task</th>
+                    <th>Status</th>
+                    <th>Owner</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tasks.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="text-center text-muted py-3">No activation tasks</td>
+                    </tr>
+                  ) : (
+                    tasks.map((t) => (
+                      <tr key={t._id || t.id}>
+                        <td>{t.taskName}</td>
+                        <td><StatusBadge status={t.status} /></td>
+                        <td>{t.assignedTo?.name || "—"}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* INVOICES: HIDE IF NO PERMISSION */}
-          {canViewInvoice && (
-            <div className="col-lg-6">
-              <div className="card shadow-sm p-3 h-100">
+        {/* ******** INVOICES ******** */}
+        {canViewInvoice && (
+          <div className="mb-4">
+            <div className="card shadow-sm p-3">
+              <div className="d-flex justify-content-between align-items-center mb-3">
+                <h6 className="text-primary mb-0">Invoices</h6>
 
-                <div className="d-flex justify-content-between align-items-center mb-3">
-                  <h6 className="text-primary mb-0">Invoices</h6>
+                <div className="d-flex gap-2">
+                  <Link to={`/invoices?planId=${id}`} className="btn btn-sm btn-outline-secondary">
+                    View All
+                  </Link>
 
-                  <div className="d-flex gap-2">
+                  {canCreateInvoice && (
                     <Link
-                      to={`/invoices?planId=${id}`}
-                      className="btn btn-sm btn-outline-secondary"
+                      to={`/invoices/new?planId=${id}${clientId ? `&clientId=${clientId}` : ""}`}
+                      className="btn btn-sm btn-primary"
                     >
-                      View All
+                      <i className="bi bi-plus-lg me-1" /> Add Invoice
                     </Link>
-
-                    {canCreateInvoice && (
-                      <Link
-                        to={`/invoices/new?planId=${id}${clientId ? `&clientId=${clientId}` : ""}`}
-                        className="btn btn-sm btn-primary"
-                      >
-                        <i className="bi bi-plus-lg me-1" />
-                        Add Invoice
-                      </Link>
-                    )}
-                  </div>
+                  )}
                 </div>
-
-                <table className="table table-sm align-middle">
-                  <thead className="table-light">
-                    <tr>
-                      <th>Invoice</th>
-                      <th>Status</th>
-                      <th className="text-end">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invoices.length === 0 ? (
-                      <tr>
-                        <td colSpan={3} className="text-center text-muted py-3">
-                          No invoices found
-                        </td>
-                      </tr>
-                    ) : (
-                      invoices.map((inv) => (
-                        <tr key={inv._id || inv.id}>
-                          <td>{inv.invoiceNumber}</td>
-                          <td><StatusBadge status={inv.paymentStatus} /></td>
-                          <td className="text-end">
-                            {formatCurrency(inv.totalAmount, "INR")}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-
               </div>
+
+              <table className="table table-sm align-middle">
+                <thead className="table-light">
+                  <tr>
+                    <th>Invoice</th>
+                    <th>Status</th>
+                    <th className="text-end">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoices.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="text-center text-muted py-3">No invoices found</td>
+                    </tr>
+                  ) : (
+                    invoices.map((inv) => (
+                      <tr key={inv._id || inv.id}>
+                        <td>{inv.invoiceNumber}</td>
+                        <td><StatusBadge status={inv.paymentStatus} /></td>
+                        <td className="text-end">{formatCurrency(inv.totalAmount, "INR")}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
+          </div>
+        )}
 
-        </div>
-
-        {/* ========== PAYMENTS SECTION ========== */}
+        {/* ******** PAYMENTS ******** */}
         {canViewPayment && (
-          <div className="card shadow-sm p-3">
-
+          <div className="card shadow-sm p-3 mb-4">
             <div className="d-flex justify-content-between align-items-center mb-3">
               <h6 className="text-primary mb-0">Payments</h6>
 
               <div className="d-flex gap-2">
-                <Link
-                  to={`/payments?planId=${id}`}
-                  className="btn btn-sm btn-outline-secondary"
-                >
+                <Link to={`/payments?planId=${id}`} className="btn btn-sm btn-outline-secondary">
                   View All
                 </Link>
 
@@ -309,8 +310,7 @@ const PlanView = () => {
                     to={`/payments/new?planId=${id}${clientId ? `&clientId=${clientId}` : ""}`}
                     className="btn btn-sm btn-primary"
                   >
-                    <i className="bi bi-plus-lg me-1" />
-                    Add Payment
+                    <i className="bi bi-plus-lg me-1" /> Add Payment
                   </Link>
                 )}
               </div>
@@ -327,24 +327,19 @@ const PlanView = () => {
               <tbody>
                 {payments.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="text-center text-muted py-3">
-                      No payments tracked
-                    </td>
+                    <td colSpan={3} className="text-center text-muted py-3">No payments tracked</td>
                   </tr>
                 ) : (
                   payments.map((p) => (
                     <tr key={p._id || p.id}>
                       <td>{formatDate(p.paymentDate)}</td>
                       <td>{p.paymentMode}</td>
-                      <td className="text-end">
-                        {formatCurrency(p.amount, "INR")}
-                      </td>
+                      <td className="text-end">{formatCurrency(p.amount, "INR")}</td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
-
           </div>
         )}
 
@@ -362,13 +357,12 @@ const PlanView = () => {
                     </h5>
                     <button
                       className="btn-close"
-                      disabled={isDeleting}
-                      onClick={() => setShowDeleteModal(false)}
+                      onClick={() => !isDeleting && setShowDeleteModal(false)}
                     />
                   </div>
 
                   <div className="modal-body">
-                    Are you sure you want to delete this plan{" "}
+                    Are you sure you want to delete plan{" "}
                     <strong>{plan.planName}</strong>? This cannot be undone.
                   </div>
 

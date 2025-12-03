@@ -1,7 +1,7 @@
 // src/pages/activation/ActivationForm.jsx
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 
 import CrudFormPage from "../common/CrudFormPage";
@@ -37,6 +37,7 @@ const ActivationForm = () => {
   const [plans, setPlans] = useState([]);
   const [users, setUsers] = useState([]);
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [clientAutoData, setClientAutoData] = useState(null);
 
   const { can } = usePermission();
   const { id } = useParams();
@@ -46,12 +47,45 @@ const ActivationForm = () => {
   const canUpdate = can("activation:update");
   const canSubmit = isEditing ? canUpdate : canCreate;
 
+  // Read URL params for auto-fill
+  const [searchParams] = useSearchParams();
+  const clientIdFromURL = searchParams.get("clientId");
+  const planIdFromURL = searchParams.get("planId");
+
   // Load clients, plans, users
   useEffect(() => {
-    clientApi.getClients().then((r) => setClients(r.clients || []));
-    planApi.getPlans().then((r) => setPlans(r.plans || []));
-    userApi.getUsers().then((r) => setUsers(r.users || []));
+    clientApi
+      .getClients()
+      .then((r) => setClients(r.clients || []))
+      .catch(() => toast.error("Unable to load clients"));
+
+    planApi
+      .getPlans()
+      .then((r) => setPlans(r.plans || []))
+      .catch(() => toast.error("Unable to load plans"));
+
+    userApi
+      .getUsers()
+      .then((r) => setUsers(r.users || []))
+      .catch(() => toast.error("Unable to load users"));
   }, []);
+
+  // If URL provides clientId, fetch that client's details for better auto-fill
+  useEffect(() => {
+    if (!clientIdFromURL) return;
+
+    clientApi
+      .getClient(clientIdFromURL)
+      .then((res) => {
+        const c = res.client;
+        setClientAutoData(c || null);
+        setSelectedClientId(clientIdFromURL);
+      })
+      .catch(() => {
+        setClientAutoData(null);
+        toast.error("Failed to load client for auto-fill");
+      });
+  }, [clientIdFromURL]);
 
   // Client dropdown
   const clientOptions = useMemo(
@@ -63,15 +97,15 @@ const ActivationForm = () => {
     [clients]
   );
 
-  // Filter plans based on client selection
+  // Filter plans based on client selection (use string compare to be safe)
   const planOptions = useMemo(() => {
     if (!selectedClientId) return [];
 
     return plans
-      .filter((p) => p.client?._id === selectedClientId)
+      .filter((p) => String(p.client?._id || p.client) === String(selectedClientId))
       .map((p) => ({
         value: p.id || p._id,
-        label: `${p.planName} – ${p.client?.name}`,
+        label: `${p.planName} – ${p.planType}`,
       }));
   }, [plans, selectedClientId]);
 
@@ -85,7 +119,7 @@ const ActivationForm = () => {
     [users]
   );
 
-  // ⭐ FIXED — Convert status string list to object list
+  // Convert status string list to object list
   const activationStatusOptions = useMemo(
     () =>
       ACTIVATION_STATUSES.map((st) => ({
@@ -100,14 +134,12 @@ const ActivationForm = () => {
     { name: "planId", label: "Plan *", type: "select", options: planOptions },
     { name: "taskName", label: "Task Name *" },
     { name: "taskType", label: "Task Type (Optional)" },
-
     {
       name: "status",
       label: "Status *",
       type: "select",
-      options: activationStatusOptions, // ⭐ FIXED
+      options: activationStatusOptions,
     },
-
     { name: "assignedTo", label: "Assigned To *", type: "select", options: userOptions },
     { name: "startDate", label: "Start Date *", type: "date" },
     { name: "dueDate", label: "Due Date *", type: "date" },
@@ -146,31 +178,58 @@ const ActivationForm = () => {
   const fetcher = async (taskId) => {
     const { task } = await activationApi.getTask(taskId);
 
-    const cid = task.client?._id;
-
+    const cid = task.client?._id || task.client?.id || task.client;
     setSelectedClientId(cid);
 
     return {
       ...defaultValues,
       ...task,
       clientId: cid,
-      planId: task.plan?._id,
-      assignedTo: task.assignedTo?._id,
+      planId: task.plan?._id || task.plan?.id || task.plan,
+      assignedTo: task.assignedTo?._id || task.assignedTo?.id || task.assignedTo || "",
       startDate: task.startDate?.substring(0, 10) || "",
       dueDate: task.dueDate?.substring(0, 10) || "",
     };
   };
 
   const handleFieldChange = (name, value) => {
-    if (name === "clientId") setSelectedClientId(value);
+    if (name === "clientId") {
+      setSelectedClientId(value);
+    }
   };
+
+  // Build auto-fill default values when not editing and URL provides client/plan
+  const autoFillValues = (() => {
+    if (!clientIdFromURL && !planIdFromURL) return {};
+
+    const v = {
+      clientId: clientIdFromURL || "",
+      planId: planIdFromURL || "",
+    };
+
+    if (clientAutoData) {
+      // Prefer assignedCare for activation; fallback to assignedSales
+      const assignedToId =
+        clientAutoData.assignedCare?._id ||
+        clientAutoData.assignedCare?.id ||
+        clientAutoData.assignedSales?._id ||
+        clientAutoData.assignedSales?.id ||
+        "";
+
+      v.assignedTo = assignedToId;
+      v.taskName = clientAutoData.name ? `${clientAutoData.name} Activation` : v.taskName;
+    }
+
+    return v;
+  })();
 
   return (
     <RequirePermission permission="activation:view">
       <CrudFormPage
+        key={clientAutoData ? `autofill-${clientAutoData._id || clientAutoData.id}` : clientIdFromURL || "activation-form"}
         title="Activation Task"
         schema={schema}
-        defaultValues={defaultValues}
+        defaultValues={{ ...defaultValues, ...autoFillValues }}
         fields={fields}
         createFn={createFn}
         updateFn={updateFn}
@@ -179,6 +238,7 @@ const ActivationForm = () => {
         onFieldChange={handleFieldChange}
         disabled={!canSubmit}
         hideSubmit={!canSubmit}
+        enableReinitialize={true}
       />
     </RequirePermission>
   );

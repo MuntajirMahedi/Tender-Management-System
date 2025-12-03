@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { toast } from "react-toastify";
+import { useSearchParams } from "react-router-dom";
+
 import CrudFormPage from "../common/CrudFormPage";
 import { clientApi, planApi, userApi } from "../../api";
 import { PLAN_TYPES, PLAN_STATUSES } from "../../utils/constants";
@@ -11,12 +13,9 @@ const schema = yup.object({
   clientId: yup.string().required("Client is required"),
   planType: yup.string().required("Plan type is required"),
   planName: yup.string().required("Plan name is required"),
-  amount: yup
-    .number()
-    .typeError("Amount must be a number")
-    .required("Amount is required"),
+  amount: yup.number().typeError("Amount must be a number").required("Amount is required"),
   assignedSales: yup.string().required("Sales owner is required"),
-  startDate: yup.string().required("Start date is required")
+  startDate: yup.string().required("Start date is required"),
 });
 
 // Default Values
@@ -33,15 +32,19 @@ const defaultValues = {
   durationMonths: 12,
   status: "Pending Activation",
   remarks: "",
-  assignedSales: ""
+  assignedSales: "",
 };
 
 const PlanForm = () => {
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
 
-  // 🔥 TOKEN amount show/hide
+  const [clientAutoData, setClientAutoData] = useState(null);
+
   const [showToken, setShowToken] = useState(false);
+
+  const [searchParams] = useSearchParams();
+  const clientIdFromURL = searchParams.get("clientId");
 
   // Load Clients & Users
   useEffect(() => {
@@ -56,118 +59,93 @@ const PlanForm = () => {
       .catch(() => toast.error("Unable to load users"));
   }, []);
 
-  // Client dropdown
+  // ⭐ Auto-Fill Client Data
+  useEffect(() => {
+    if (clientIdFromURL) {
+      clientApi
+        .getClient(clientIdFromURL)
+        .then((res) => setClientAutoData(res.client))
+        .catch(() => toast.error("Failed to auto-fill client info"));
+    }
+  }, [clientIdFromURL]);
+
+  // Dropdown Options
   const clientOptions = useMemo(
     () =>
       clients.map((c) => ({
         label: `${c.name} (${c.clientCode || "No Code"})`,
-        value: c.id || c._id
+        value: c.id || c._id,
       })),
     [clients]
   );
 
-  // User dropdown
   const userOptions = useMemo(
     () =>
       users.map((u) => ({
         label: u.name,
-        value: u.id || u._id
+        value: u.id || u._id,
       })),
     [users]
   );
 
-  const statusOptions = useMemo(
-    () =>
-      PLAN_STATUSES.map((st) => ({
-        value: st,
-        label: st
-      })),
-    []
-  );
+  const statusOptions = PLAN_STATUSES.map((st) => ({ value: st, label: st }));
+  const planTypeOptions = PLAN_TYPES.map((t) => ({ value: t, label: t }));
 
-  const planTypeOptions = useMemo(
-    () =>
-      PLAN_TYPES.map((type) => ({
-        value: type,
-        label: type
-      })),
-    []
-  );
-
-  // ⭐ FIELDS (Token amount dynamic)
+  // ⭐ FIELDS
   const fields = [
-    {
-      name: "clientId",
-      label: "Client *",
-      type: "select",
-      options: clientOptions
-    },
-    {
-      name: "planName",
-      label: "Plan Name *"
-    },
+    { name: "clientId", label: "Client *", type: "select", options: clientOptions },
+
+    { name: "planName", label: "Plan Name *" },
+
     {
       name: "planType",
       label: "Plan Type *",
       type: "select",
       options: planTypeOptions,
-
-      // ⭐ FINAL FIX — No setValueFn inside
-      onChange: (e) => {
-        const val = e.target.value;
-        setShowToken(val === "DC");
-      }
-    },
-    {
-      name: "amount",
-      label: "Base Amount *",
-      type: "number",
-      min: 0
+      onChange: (e) => setShowToken(e.target.value === "DC"),
     },
 
-    { name: "discount", label: "Discount (Optional)", type: "number", min: 0 },
+    { name: "amount", label: "Base Amount *", type: "number", min: 0 },
+
+    { name: "discount", label: "Discount", type: "number", min: 0 },
     { name: "taxPercent", label: "Tax %", type: "number", min: 0 },
 
-    // ⭐ SHOW ONLY IF DC
     showToken && {
       name: "tokenAmount",
-      label: "Token Amount (Optional)",
-      type: "number",
-      min: 0
-    },
-
-    { name: "startDate", label: "Start Date *", type: "date" },
-
-    {
-      name: "durationMonths",
-      label: "Duration Months",
+      label: "Token Amount",
       type: "number",
       min: 0,
     },
 
-    {
-      name: "status",
-      label: "Plan Status *",
-      type: "select",
-      options: statusOptions
-    },
+    { name: "startDate", label: "Start Date *", type: "date" },
+
+    { name: "durationMonths", label: "Duration Months", type: "number", min: 0 },
+
+    { name: "status", label: "Plan Status *", type: "select", options: statusOptions },
 
     {
       name: "assignedSales",
       label: "Sales Owner *",
       type: "select",
-      options: userOptions
+      options: userOptions,
     },
 
-    {
-      name: "remarks",
-      label: "Remarks (Optional)",
-      isTextArea: true,
-      col: "col-12"
-    }
+    { name: "remarks", label: "Remarks", isTextArea: true, col: "col-12" },
   ].filter(Boolean);
 
-  // Create plan
+  // ⭐ MAIN AUTO-FILL INITIAL VALUES
+  const autoFillValues = clientAutoData
+    ? {
+        clientId: clientIdFromURL,
+        planName: `${clientAutoData.name} Plan`,
+        assignedSales:
+          clientAutoData.assignedSales?._id ||
+          clientAutoData.assignedSales?.id ||
+          "",
+      }
+    : {};
+
+  // CREATE
   const createFn = async (payload) => {
     try {
       const res = await planApi.createPlan(payload);
@@ -179,7 +157,7 @@ const PlanForm = () => {
     }
   };
 
-  // Update plan
+  // UPDATE
   const updateFn = async (id, payload) => {
     try {
       const res = await planApi.updatePlan(id, payload);
@@ -191,7 +169,7 @@ const PlanForm = () => {
     }
   };
 
-  // Prefill on edit
+  // EDIT MODE
   const fetcher = async (id) => {
     const { plan } = await planApi.getPlan(id);
 
@@ -206,20 +184,22 @@ const PlanForm = () => {
         plan.assignedSales?.id ||
         plan.assignedSales ||
         "",
-      startDate: plan.startDate?.substring(0, 10) || ""
+      startDate: plan.startDate?.substring(0, 10) || "",
     };
   };
 
   return (
     <CrudFormPage
+      key={clientAutoData ? "loaded" : "loading"} // ⭐ FORCE RERENDER FIX
       title="Plan"
       schema={schema}
-      defaultValues={defaultValues}
+      defaultValues={{ ...defaultValues, ...autoFillValues }}
       fields={fields}
       createFn={createFn}
       updateFn={updateFn}
       fetcher={fetcher}
       redirectPath="/plans"
+      enableReinitialize={true} // ⭐ IMPORTANT FIX
     />
   );
 };

@@ -1,7 +1,9 @@
 // src/pages/invoices/InvoiceForm.jsx
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
+
 import CrudFormPage from "../common/CrudFormPage";
 import { clientApi, invoiceApi, planApi } from "../../api";
 import { PAYMENT_STATUSES } from "../../utils/constants";
@@ -38,14 +40,41 @@ const defaultValues = {
 const InvoiceForm = () => {
   const [clients, setClients] = useState([]);
   const [plans, setPlans] = useState([]);
-
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [clientAutoData, setClientAutoData] = useState(null);
+
+  // Read URL params for auto-fill
+  const [searchParams] = useSearchParams();
+  const clientIdFromURL = searchParams.get("clientId");
+  const planIdFromURL = searchParams.get("planId");
 
   // Load dropdown values
   useEffect(() => {
-    clientApi.getClients().then((res) => setClients(res.clients || []));
-    planApi.getPlans().then((res) => setPlans(res.plans || []));
+    clientApi
+      .getClients()
+      .then((res) => setClients(res.clients || []))
+      .catch(() => toast.error("Unable to load clients"));
+
+    planApi
+      .getPlans()
+      .then((res) => setPlans(res.plans || []))
+      .catch(() => toast.error("Unable to load plans"));
   }, []);
+
+  // If clientId provided in URL, fetch client details for better auto-fill (optional)
+  useEffect(() => {
+    if (!clientIdFromURL) return;
+    clientApi
+      .getClient(clientIdFromURL)
+      .then((res) => {
+        setClientAutoData(res.client || null);
+        setSelectedClientId(clientIdFromURL);
+      })
+      .catch(() => {
+        setClientAutoData(null);
+        toast.error("Failed to load client info for auto-fill");
+      });
+  }, [clientIdFromURL]);
 
   // Client dropdown options
   const clientOptions = useMemo(
@@ -67,24 +96,26 @@ const InvoiceForm = () => {
     []
   );
 
-  // ⭐ ALL plans map (lookup)
+  // ALL plans map (lookup) — map both _id and id to plan for safety
   const planLookup = useMemo(() => {
     const map = {};
     plans.forEach((p) => {
-      map[p._id || p.id] = p; // FIXED
+      const key1 = p._id || p.id;
+      if (key1) map[String(key1)] = p;
+      // also try to map client-id keyed entries (not overwriting)
     });
     return map;
   }, [plans]);
 
-  // ⭐ Filter plans by client
+  // Filter plans by client (string-safe compare)
   const planOptions = useMemo(() => {
     if (!selectedClientId) return [];
 
     return plans
-      .filter((p) => (p.client?._id || p.client?.id) === selectedClientId)
+      .filter((p) => String(p.client?._id || p.client?.id || p.client) === String(selectedClientId))
       .map((p) => ({
         value: p._id || p.id,
-        label: `${p.planName} (${p.client?.name})`,
+        label: `${p.planName} (${p.planType || ""})`,
       }));
   }, [plans, selectedClientId]);
 
@@ -150,7 +181,7 @@ const InvoiceForm = () => {
   const fetcher = async (id) => {
     const { invoice } = await invoiceApi.getInvoice(id);
 
-    const cid = invoice.client?._id;
+    const cid = invoice.client?._id || invoice.client?.id || invoice.client;
 
     // Auto-filter plans
     setSelectedClientId(cid);
@@ -159,14 +190,14 @@ const InvoiceForm = () => {
       ...defaultValues,
       ...invoice,
       clientId: cid,
-      planId: invoice.plan?._id,
+      planId: invoice.plan?._id || invoice.plan?.id || invoice.plan,
       invoiceDate: invoice.invoiceDate?.substring(0, 10) || "",
       dueDate: invoice.dueDate?.substring(0, 10) || "",
       taxPercent: invoice.taxPercent || 18,
     };
   };
 
-  // ⭐ AUTO-FILL LOGIC
+  // AUTO-FILL handler: signature may include setValue (CrudFormPage may pass it)
   const handleFieldChange = (name, value, values, setValue) => {
     if (name === "clientId") {
       setSelectedClientId(value);
@@ -174,36 +205,74 @@ const InvoiceForm = () => {
     }
 
     if (name === "planId") {
-      const plan = planLookup[value];
+      // If setValue provided by CrudFormPage, use it to fill dependent fields
+      const plan = planLookup[String(value)];
       if (!plan) return;
 
-      setValue("baseAmount", plan.amount || 0);
-      setValue("discount", plan.discount || 0);
-      setValue("taxPercent", plan.taxPercent || 18);
-      setValue("notes", plan.remarks || "");
+      // set base values from plan (if setValue available)
+      if (typeof setValue === "function") {
+        setValue("baseAmount", plan.amount ?? 0);
+        setValue("discount", plan.discount ?? 0);
+        setValue("taxPercent", plan.taxPercent ?? 18);
+        setValue("notes", plan.remarks ?? "");
 
-      // Invoice date
-      const today = new Date().toISOString().substring(0, 10);
-      setValue("invoiceDate", today);
+        // Set invoiceDate to today and dueDate to +7 days if not already set
+        const today = new Date();
+        const invoiceDateStr = today.toISOString().substring(0, 10);
+        setValue("invoiceDate", invoiceDateStr);
 
-      // +7 days
-      const due = new Date();
-      due.setDate(due.getDate() + 7);
-      setValue("dueDate", due.toISOString().substring(0, 10));
+        const due = new Date();
+        due.setDate(due.getDate() + 7);
+        setValue("dueDate", due.toISOString().substring(0, 10));
+      } else {
+        // If setValue not available, try to mutate values (best-effort)
+        try {
+          if (values && typeof values === "object") {
+            values.baseAmount = plan.amount ?? 0;
+            values.discount = plan.discount ?? 0;
+            values.taxPercent = plan.taxPercent ?? 18;
+            values.notes = plan.remarks ?? "";
+
+            const today = new Date();
+            values.invoiceDate = today.toISOString().substring(0, 10);
+            const due = new Date();
+            due.setDate(due.getDate() + 7);
+            values.dueDate = due.toISOString().substring(0, 10);
+          }
+        } catch (e) {
+          // swallow — fine if not possible
+        }
+      }
     }
   };
 
+  // Build auto-fill default values when opening from client/plan URL
+  const autoFillValues = (() => {
+    if (!clientIdFromURL && !planIdFromURL) return {};
+
+    const v = {
+      clientId: clientIdFromURL || "",
+      planId: planIdFromURL || "",
+    };
+
+    // If clientAutoData fetched earlier, we could add more defaults (not strictly necessary)
+    // Example: set notes or default paymentStatus from client preferences (if any)
+    return v;
+  })();
+
   return (
     <CrudFormPage
+      key={clientAutoData ? `invoice-autofill-${clientAutoData._id || clientAutoData.id}` : clientIdFromURL || planIdFromURL || "invoice-form"}
       title="Invoice"
       schema={schema}
-      defaultValues={defaultValues}
+      defaultValues={{ ...defaultValues, ...autoFillValues }}
       fields={fields}
       createFn={createFn}
       updateFn={updateFn}
       fetcher={fetcher}
       redirectPath="/invoices"
       onFieldChange={handleFieldChange}
+      enableReinitialize={true}
     />
   );
 };

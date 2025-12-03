@@ -1,7 +1,13 @@
 // src/pages/clients/ClientView.jsx
 import { useEffect, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { clientApi } from "../../api";
+import {
+  clientApi,
+  planApi,
+  paymentApi,
+  activationApi,
+  ticketApi
+} from "../../api";
 import PageHeader from "../../components/PageHeader";
 import StatusBadge from "../../components/StatusBadge";
 import {
@@ -31,63 +37,101 @@ const ClientView = () => {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 🔽 state for delete confirm modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const { can } = usePermission();
 
+  // MAIN PERMISSIONS
   const canView = can("client:view");
   const canUpdate = can("client:update");
   const canDelete = can("client:delete");
 
+  // SUB PERMISSIONS
+  const canViewPlans = can("plan:view");
   const canCreatePlan = can("plan:create");
+
+  const canViewPayments = can("payment:view");
   const canCreatePayment = can("payment:create");
+
+  const canViewActivation = can("activation:view");
   const canCreateActivation = can("activation:create");
+
+  const canViewTickets = can("ticket:view");
   const canCreateTicket = can("ticket:create");
 
+  // LOAD DATA
   useEffect(() => {
     if (!canView) return;
 
     const load = async () => {
       try {
         setLoading(true);
-        const res = await clientApi.getClientOverview(id);
 
-        setClient(res.client || null);
-        setPlans(res.plans || []);
-        setPayments(res.payments || []);
-        setActivation(res.activation || null);
-        setTickets(res.tickets || []);
+        const requests = [
+          clientApi.getClientOverview(id)
+        ];
+
+        requests.push(canViewPlans ? planApi.getClientPlans(id) : { plans: [] });
+        requests.push(
+          canViewPayments ? paymentApi.getClientPayments(id) : { payments: [] }
+        );
+
+        requests.push(
+          canViewActivation
+            ? activationApi.getTasks({
+                clientId: id,
+                limit: 1,
+                sort: "-createdAt"
+              })
+            : { tasks: [] }
+        );
+
+        requests.push(
+          canViewTickets ? ticketApi.getClientTickets(id) : { tickets: [] }
+        );
+
+        const [
+          clientRes,
+          plansRes,
+          paymentsRes,
+          activationRes,
+          ticketsRes
+        ] = await Promise.all(requests);
+
+        setClient(clientRes.client || null);
+        setPlans(plansRes.plans || []);
+        setPayments(paymentsRes.payments || []);
+        setActivation(activationRes.tasks?.[0] || null);
+        setTickets(ticketsRes.tickets || []);
       } catch (err) {
-        console.error("Unable to load client overview", err);
-        setClient(null);
+        console.error("Client load error", err);
         toast.error("Unable to load client details");
+        setClient(null);
       } finally {
         setLoading(false);
       }
     };
 
     load();
-  }, [id, canView]);
+  }, [
+    id,
+    canView,
+    canViewPlans,
+    canViewPayments,
+    canViewActivation,
+    canViewTickets
+  ]);
 
-  // 🔽 called when user CONFIRMS delete in modal
+  // DELETE CLIENT
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
-
       await clientApi.deleteClient(id);
       toast.success("Client deleted successfully");
-
-      setShowDeleteModal(false);
       navigate("/clients");
     } catch (err) {
-      console.error("Unable to delete client", err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to delete client";
-      toast.error(msg);
+      toast.error("Failed to delete client");
     } finally {
       setIsDeleting(false);
     }
@@ -108,7 +152,6 @@ const ClientView = () => {
     (sum, p) => sum + (Number(p.amount) || 0),
     0
   );
-  const totalPlans = plans.length;
 
   return (
     <RequirePermission permission="client:view">
@@ -118,59 +161,45 @@ const ClientView = () => {
           title={`Client • ${client.name}`}
           subtitle={client.companyName || ""}
           actions={[
-            // ✏️ Edit
             canUpdate && (
               <Link
                 key="edit"
                 to={`/clients/${id}/edit`}
                 className="btn btn-outline-primary"
               >
-                <i className="bi bi-pencil-square me-2" />
-                Edit
+                <i className="bi bi-pencil me-2" /> Edit
               </Link>
             ),
-
-            // 🗑 Delete (opens confirm modal)
             canDelete && (
               <button
                 key="delete"
                 className="btn btn-outline-danger"
                 onClick={() => setShowDeleteModal(true)}
               >
-                <i className="bi bi-trash me-2" />
-                Delete
+                <i className="bi bi-trash me-2" /> Delete
               </button>
             ),
-
-            // ➕ New Plan
             canCreatePlan && (
               <button
                 key="new-plan"
-                className="btn btn-primary"
                 onClick={() => navigate(`/plans/new?clientId=${id}`)}
+                className="btn btn-primary"
               >
-                <i className="bi bi-card-list me-2" />
-                New Plan
+                <i className="bi bi-plus-lg me-2" /> New Plan
               </button>
             )
           ].filter(Boolean)}
         />
 
-        {/* ----------- SUMMARY SECTION ----------- */}
+        {/* DETAILS */}
         <div className="row g-4 mb-4">
-          {/* Profile */}
+          {/* PROFILE */}
           <div className="col-md-3">
-            <div className="card shadow-sm p-3 h-100">
+            <div className="card p-3 shadow-sm">
               <h6 className="text-primary mb-3">Profile</h6>
 
-              <StatItem
-                label="Status"
-                value={<StatusBadge status={client.status} />}
-              />
-              <StatItem
-                label="Client Code"
-                value={client.clientCode || "—"}
-              />
+              <StatItem label="Status" value={<StatusBadge status={client.status} />} />
+              <StatItem label="Client Code" value={client.clientCode || "—"} />
 
               <hr />
 
@@ -182,10 +211,10 @@ const ClientView = () => {
             </div>
           </div>
 
-          {/* Contact / Address */}
+          {/* ADDRESS */}
           <div className="col-md-3">
-            <div className="card shadow-sm p-3 h-100">
-              <h6 className="text-primary mb-3">Contact & Location</h6>
+            <div className="card p-3 shadow-sm">
+              <h6 className="text-primary mb-3">Contact / Location</h6>
 
               <StatItem
                 label="Address"
@@ -206,33 +235,28 @@ const ClientView = () => {
             </div>
           </div>
 
-          {/* Team */}
+          {/* TEAM */}
           <div className="col-md-3">
-            <div className="card shadow-sm p-3 h-100">
+            <div className="card p-3 shadow-sm">
               <h6 className="text-primary mb-3">Team</h6>
 
-              <StatItem
-                label="Sales Owner"
-                value={client.assignedSales?.name || "Unassigned"}
-              />
-
-              <StatItem
-                label="Care Owner"
-                value={client.assignedCare?.name || "Unassigned"}
-              />
+              <StatItem label="Sales Owner" value={client.assignedSales?.name || "Unassigned"} />
+              <StatItem label="Care Owner" value={client.assignedCare?.name || "Unassigned"} />
             </div>
           </div>
 
-          {/* Activity Summary */}
+          {/* SUMMARY */}
           <div className="col-md-3">
-            <div className="card shadow-sm p-3 h-100">
+            <div className="card p-3 shadow-sm">
               <h6 className="text-primary mb-3">Activity Summary</h6>
 
-              <StatItem label="Total Plans" value={totalPlans} />
-              <StatItem
-                label="Total Paid"
-                value={formatCurrency(totalPaid, "INR")}
-              />
+              {canViewPlans && (
+                <StatItem label="Total Plans" value={plans.length} />
+              )}
+
+              {canViewPayments && (
+                <StatItem label="Total Paid" value={formatCurrency(totalPaid, "INR")} />
+              )}
 
               <StatItem
                 label="Interested Products"
@@ -246,233 +270,254 @@ const ClientView = () => {
           </div>
         </div>
 
-        {/* ----------- PLANS + PAYMENTS ----------- */}
+        {/* PLANS & PAYMENTS */}
         <div className="row g-4 mb-4">
-          {/* Plans */}
-          <div className="col-lg-6">
-            <div className="card shadow-sm p-3 h-100">
-              <div className="d-flex justify-content-between align-items-center mb-2">
-                <h6 className="text-primary mb-0">Plans</h6>
-                <div>
-                  {canCreatePlan && (
+          {/* PLANS */}
+          {canViewPlans && (
+            <div className="col-lg-6">
+              <div className="card p-3 shadow-sm h-100">
+                <div className="d-flex justify-content-between mb-3">
+                  <h6 className="text-primary mb-0">Plans</h6>
+
+                  <div className="d-flex gap-2">
                     <Link
-                      to={`/plans/new?clientId=${id}`}
-                      className="btn btn-sm btn-primary"
+                      to={`/plans?clientId=${id}`}
+                      className="btn btn-sm btn-outline-secondary"
                     >
-                      <i className="bi bi-plus-lg me-1" /> Add Plan
+                      View All
                     </Link>
-                  )}
+
+                    {canCreatePlan && (
+                      <Link
+                        to={`/plans/new?clientId=${id}`}
+                        className="btn btn-sm btn-primary"
+                      >
+                        <i className="bi bi-plus-lg me-1" /> Add Plan
+                      </Link>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <table className="table table-sm align-middle">
-                <thead className="table-light">
-                  <tr>
-                    <th>Plan</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th className="text-end">Net</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {plans.length === 0 ? (
+                <table className="table table-sm">
+                  <thead className="table-light">
                     <tr>
-                      <td colSpan={4} className="text-center text-muted py-3">
-                        No plans yet
-                      </td>
+                      <th>Plan</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                      <th className="text-end">Net</th>
                     </tr>
-                  ) : (
-                    plans.map((p) => (
-                      <tr key={p.id || p._id}>
-                        <td>
-                          <div className="fw-semibold">{p.planName}</div>
-                          <small className="text-muted">{p.planCode}</small>
-                        </td>
-                        <td>{p.planType}</td>
-                        <td>
-                          <StatusBadge status={p.status} />
-                        </td>
-                        <td className="text-end">
-                          {formatCurrency(p.netAmount || 0, "INR")}
+                  </thead>
+                  <tbody>
+                    {plans.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="text-center text-muted py-3">
+                          No plans yet
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Payments */}
-          <div className="col-lg-6">
-            <div className="card shadow-sm p-3 h-100">
-              <div className="d-flex justify-content-between align-items-center mb-2">
-                <h6 className="text-primary mb-0">Recent Payments</h6>
-
-                {canCreatePayment && (
-                  <Link
-                    to={`/payments/new?clientId=${id}`}
-                    className="btn btn-sm btn-primary"
-                  >
-                    <i className="bi bi-cash-stack me-1" /> Add Payment
-                  </Link>
-                )}
+                    ) : (
+                      plans.map((p) => (
+                        <tr key={p._id || p.id}>
+                          <td>
+                            <Link to={`/plans/${p._id}`} className="fw-semibold">
+                              {p.planName}
+                            </Link>
+                            <br />
+                            <small className="text-muted">{p.planCode}</small>
+                          </td>
+                          <td>{p.planType}</td>
+                          <td>
+                            <StatusBadge status={p.status} />
+                          </td>
+                          <td className="text-end">
+                            {formatCurrency(p.netAmount || 0, "INR")}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
+            </div>
+          )}
 
-              <table className="table table-sm align-middle">
-                <thead className="table-light">
-                  <tr>
-                    <th>Date</th>
-                    <th>Plan</th>
-                    <th className="text-end">Amount</th>
-                  </tr>
-                </thead>
+          {/* PAYMENTS */}
+          {canViewPayments && (
+            <div className="col-lg-6">
+              <div className="card p-3 shadow-sm h-100">
+                <div className="d-flex justify-content-between mb-3">
+                  <h6 className="text-primary mb-0">Recent Payments</h6>
 
-                <tbody>
-                  {payments.length === 0 ? (
+                  <div className="d-flex gap-2">
+                    <Link
+                      to={`/payments?clientId=${id}`}
+                      className="btn btn-sm btn-outline-secondary"
+                    >
+                      View All
+                    </Link>
+
+                    {canCreatePayment && (
+                      <Link
+                        to={`/payments/new?clientId=${id}`}
+                        className="btn btn-sm btn-primary"
+                      >
+                        <i className="bi bi-cash me-1" /> Add Payment
+                      </Link>
+                    )}
+                  </div>
+                </div>
+
+                <table className="table table-sm">
+                  <thead className="table-light">
                     <tr>
-                      <td colSpan={3} className="text-center text-muted py-3">
-                        No payments tracked
-                      </td>
+                      <th>Date</th>
+                      <th>Plan</th>
+                      <th className="text-end">Amount</th>
                     </tr>
-                  ) : (
-                    payments.map((pay) => (
-                      <tr key={pay.id || pay._id}>
-                        <td>{formatDate(pay.paymentDate)}</td>
-                        <td>{pay.plan?.planName || "—"}</td>
-                        <td className="text-end">
-                          {formatCurrency(pay.amount || 0, "INR")}
+                  </thead>
+                  <tbody>
+                    {payments.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="text-center text-muted py-3">
+                          No payments
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      payments.map((p) => (
+                        <tr key={p._id || p.id}>
+                          <td>{formatDate(p.paymentDate)}</td>
+                          <td>{p.plan?.planName || "—"}</td>
+                          <td className="text-end">
+                            {formatCurrency(p.amount || 0, "INR")}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* ----------- ACTIVATION + TICKETS ----------- */}
-        <div className="row g-4">
-          {/* Activation */}
-          <div className="col-lg-6">
-            <div className="card shadow-sm p-3 h-100">
-              <div className="d-flex justify-content-between align-items-center mb-2">
-                <h6 className="text-primary mb-0">Latest Activation</h6>
-                {canCreateActivation && (
-                  <Link
-                    to={`/activation/new?clientId=${id}`}
-                    className="btn btn-sm btn-primary"
-                  >
-                    <i className="bi bi-plus-lg me-1" /> Add Activation Task
-                  </Link>
+        {/* ACTIVATION + TICKETS */}
+        <div className="row g-4 mb-4">
+          {/* ACTIVATION */}
+          {canViewActivation && (
+            <div className="col-lg-6">
+              <div className="card p-3 shadow-sm h-100">
+                <div className="d-flex justify-content-between mb-3">
+                  <h6 className="text-primary mb-0">Latest Activation</h6>
+
+                  <div className="d-flex gap-2">
+                    <Link
+                      to={`/activation?clientId=${id}`}
+                      className="btn btn-sm btn-outline-secondary"
+                    >
+                      View All
+                    </Link>
+
+                    {canCreateActivation && (
+                      <Link
+                        to={`/activation/new?clientId=${id}`}
+                        className="btn btn-sm btn-primary"
+                      >
+                        <i className="bi bi-plus-lg me-1" /> Add Activation
+                      </Link>
+                    )}
+                  </div>
+                </div>
+
+                {!activation ? (
+                  <p className="text-muted">No activation found</p>
+                ) : (
+                  <>
+                    <StatItem label="Task" value={activation.taskName} />
+                    <StatItem label="Status" value={<StatusBadge status={activation.status} />} />
+                    <StatItem label="Assigned To" value={activation.assignedTo?.name || "—"} />
+                    <StatItem label="Due Date" value={formatDate(activation.dueDate)} />
+                    <StatItem label="Progress" value={`${activation.activationProgress || 0}%`} />
+                  </>
                 )}
               </div>
-
-              {!activation ? (
-                <p className="text-muted">No activation task found.</p>
-              ) : (
-                <>
-                  <StatItem label="Task" value={activation.taskName} />
-                  <StatItem
-                    label="Status"
-                    value={<StatusBadge status={activation.status} />}
-                  />
-                  <StatItem
-                    label="Assigned To"
-                    value={activation.assignedTo?.name || "—"}
-                  />
-                  <StatItem
-                    label="Due Date"
-                    value={formatDate(activation.dueDate)}
-                  />
-                  <StatItem
-                    label="Progress"
-                    value={`${activation.activationProgress ?? "0"}%`}
-                  />
-                </>
-              )}
             </div>
-          </div>
+          )}
 
-          {/* Tickets */}
-          <div className="col-lg-6">
-            <div className="card shadow-sm p-3 h-100">
-              <div className="d-flex justify-content-between align-items-center mb-2">
-                <h6 className="text-primary mb-0">Tickets</h6>
-                {canCreateTicket && (
-                  <Link
-                    to={`/tickets/new?clientId=${id}`}
-                    className="btn btn-sm btn-primary"
-                  >
-                    <i className="bi bi-plus-lg me-1" /> Add Ticket
-                  </Link>
-                )}
-              </div>
+          {/* TICKETS */}
+          {canViewTickets && (
+            <div className="col-lg-6">
+              <div className="card p-3 shadow-sm h-100">
+                <div className="d-flex justify-content-between mb-3">
+                  <h6 className="text-primary mb-0">Tickets</h6>
 
-              {tickets.length === 0 ? (
-                <p className="text-muted">No tickets</p>
-              ) : (
-                <div className="list-group">
-                  {tickets.slice(0, 6).map((t) => (
-                    <div key={t._id} className="list-group-item">
-                      <div className="d-flex justify-content-between">
-                        <div>
-                          <div className="fw-semibold">{t.subject}</div>
-                          <small className="text-muted">
-                            {t.plan?.planName || ""}
-                          </small>
-                        </div>
-                        <div className="text-end">
-                          <StatusBadge status={t.status} />
-                          <small className="text-muted d-block">
-                            {t.priority}
-                          </small>
+                  <div className="d-flex gap-2">
+                    <Link
+                      to={`/tickets?clientId=${id}`}
+                      className="btn btn-sm btn-outline-secondary"
+                    >
+                      View All
+                    </Link>
+
+                    {canCreateTicket && (
+                      <Link
+                        to={`/tickets/new?clientId=${id}`}
+                        className="btn btn-sm btn-primary"
+                      >
+                        <i className="bi bi-plus-lg me-1" /> Add Ticket
+                      </Link>
+                    )}
+                  </div>
+                </div>
+
+                {tickets.length === 0 ? (
+                  <p className="text-muted">No tickets found</p>
+                ) : (
+                  <div className="list-group">
+                    {tickets.slice(0, 6).map((t) => (
+                      <div key={t._id || t.id} className="list-group-item">
+                        <div className="d-flex justify-content-between">
+                          <div>
+                            <div className="fw-semibold">{t.subject}</div>
+                            <small className="text-muted">{t.plan?.planName}</small>
+                          </div>
+                          <div className="text-end">
+                            <StatusBadge status={t.status} />
+                            <small className="text-muted d-block">{t.priority}</small>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* ----------- DELETE CONFIRM MODAL ----------- */}
+        {/* DELETE CONFIRM */}
         {showDeleteModal && (
           <>
-            <div
-              className="modal fade show d-block"
-              tabIndex="-1"
-              role="dialog"
-              aria-modal="true"
-            >
-              <div className="modal-dialog modal-dialog-centered" role="document">
+            <div className="modal fade show d-block">
+              <div className="modal-dialog modal-dialog-centered">
                 <div className="modal-content">
                   <div className="modal-header">
                     <h5 className="modal-title text-danger">
-                      <i className="bi bi-exclamation-triangle-fill me-2" />
+                      <i className="bi bi-exclamation-triangle-fill me-2"></i>
                       Confirm Delete
                     </h5>
                     <button
-                      type="button"
                       className="btn-close"
-                      aria-label="Close"
                       disabled={isDeleting}
-                      onClick={() => !isDeleting && setShowDeleteModal(false)}
-                    ></button>
+                      onClick={() => setShowDeleteModal(false)}
+                    />
                   </div>
+
                   <div className="modal-body">
-                    <p>
-                      Are you sure you want to delete this client{" "}
-                      <strong>{client?.name}</strong>? This action cannot be
-                      undone.
-                    </p>
+                    Are you sure you want to delete client{" "}
+                    <strong>{client.name}</strong>? This action cannot be undone.
                   </div>
+
                   <div className="modal-footer">
                     <button
-                      type="button"
                       className="btn btn-secondary"
                       disabled={isDeleting}
                       onClick={() => setShowDeleteModal(false)}
@@ -480,18 +525,17 @@ const ClientView = () => {
                       Cancel
                     </button>
                     <button
-                      type="button"
                       className="btn btn-danger"
-                      onClick={handleDelete}
                       disabled={isDeleting}
+                      onClick={handleDelete}
                     >
-                      {isDeleting ? "Deleting..." : "Yes, delete"}
+                      {isDeleting ? "Deleting..." : "Yes, Delete"}
                     </button>
                   </div>
                 </div>
               </div>
             </div>
-            {/* backdrop */}
+
             <div className="modal-backdrop fade show"></div>
           </>
         )}

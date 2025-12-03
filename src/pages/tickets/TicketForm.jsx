@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { toast } from "react-toastify";
+import { useSearchParams } from "react-router-dom";
+
 import CrudFormPage from "../common/CrudFormPage";
 import { clientApi, planApi, ticketApi, userApi } from "../../api";
 import {
@@ -38,13 +40,47 @@ const TicketForm = () => {
   const [users, setUsers] = useState([]);
 
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [clientAutoData, setClientAutoData] = useState(null);
+
+  // Read URL params
+  const [searchParams] = useSearchParams();
+  const clientIdFromURL = searchParams.get("clientId");
+  const planIdFromURL = searchParams.get("planId");
 
   // Load all data
   useEffect(() => {
-    clientApi.getClients().then((res) => setClients(res.clients || []));
-    planApi.getPlans().then((res) => setPlans(res.plans || []));
-    userApi.getUsers().then((res) => setUsers(res.users || []));
+    clientApi
+      .getClients()
+      .then((res) => setClients(res.clients || []))
+      .catch(() => toast.error("Unable to load clients"));
+
+    planApi
+      .getPlans()
+      .then((res) => setPlans(res.plans || []))
+      .catch(() => toast.error("Unable to load plans"));
+
+    userApi
+      .getUsers()
+      .then((res) => setUsers(res.users || []))
+      .catch(() => toast.error("Unable to load users"));
   }, []);
+
+  // If URL provides clientId, fetch that client's details for better auto-fill
+  useEffect(() => {
+    if (!clientIdFromURL) return;
+
+    clientApi
+      .getClient(clientIdFromURL)
+      .then((res) => {
+        const c = res.client;
+        setClientAutoData(c || null);
+        setSelectedClientId(clientIdFromURL);
+      })
+      .catch(() => {
+        setClientAutoData(null);
+        toast.error("Failed to load client for auto-fill");
+      });
+  }, [clientIdFromURL]);
 
   // Client dropdown
   const clientOptions = useMemo(
@@ -56,15 +92,15 @@ const TicketForm = () => {
     [clients]
   );
 
-  // Plan dropdown filtered by client
+  // Plan dropdown filtered by client (string-safe compare)
   const planOptions = useMemo(() => {
     if (!selectedClientId) return [];
 
     return plans
-      .filter((p) => p.client?._id === selectedClientId)
+      .filter((p) => String(p.client?._id || p.client) === String(selectedClientId))
       .map((p) => ({
         value: p.id || p._id,
-        label: `${p.planName} – ${p.client?.name}`,
+        label: `${p.planName} – ${p.client?.name || ""}`,
       }));
   }, [plans, selectedClientId]);
 
@@ -78,31 +114,19 @@ const TicketForm = () => {
     [users]
   );
 
-  // ⭐ FIXED — Convert string arrays → dropdown object arrays
+  // Convert arrays to options
   const ticketTypeOptions = useMemo(
-    () =>
-      TICKET_TYPES.map((t) => ({
-        value: t,
-        label: t,
-      })),
+    () => TICKET_TYPES.map((t) => ({ value: t, label: t })),
     []
   );
 
   const priorityOptions = useMemo(
-    () =>
-      TICKET_PRIORITIES.map((p) => ({
-        value: p,
-        label: p,
-      })),
+    () => TICKET_PRIORITIES.map((p) => ({ value: p, label: p })),
     []
   );
 
   const statusOptions = useMemo(
-    () =>
-      TICKET_STATUSES.map((s) => ({
-        value: s,
-        label: s,
-      })),
+    () => TICKET_STATUSES.map((s) => ({ value: s, label: s })),
     []
   );
 
@@ -111,37 +135,17 @@ const TicketForm = () => {
     { name: "clientId", label: "Client *", type: "select", options: clientOptions },
     { name: "planId", label: "Plan (Optional)", type: "select", options: planOptions },
 
-    {
-      name: "ticketType",
-      label: "Type *",
-      type: "select",
-      options: ticketTypeOptions, // FIXED
-    },
+    { name: "ticketType", label: "Type *", type: "select", options: ticketTypeOptions },
 
     { name: "subject", label: "Subject *" },
 
     { name: "description", label: "Description (Optional)", isTextArea: true, col: "col-12" },
 
-    {
-      name: "priority",
-      label: "Priority *",
-      type: "select",
-      options: priorityOptions, // FIXED
-    },
+    { name: "priority", label: "Priority *", type: "select", options: priorityOptions },
 
-    {
-      name: "status",
-      label: "Status *",
-      type: "select",
-      options: statusOptions, // FIXED
-    },
+    { name: "status", label: "Status *", type: "select", options: statusOptions },
 
-    {
-      name: "assignedTo",
-      label: "Assigned To *",
-      type: "select",
-      options: userOptions,
-    },
+    { name: "assignedTo", label: "Assigned To *", type: "select", options: userOptions },
   ];
 
   // CREATE
@@ -179,16 +183,15 @@ const TicketForm = () => {
   const fetcher = async (id) => {
     const { ticket } = await ticketApi.getTicket(id);
 
-    const cid = ticket.client?._id;
-
+    const cid = ticket.client?._id || ticket.client?.id || ticket.client;
     setSelectedClientId(cid);
 
     return {
       ...defaultValues,
       ...ticket,
       clientId: cid,
-      planId: ticket.plan?._id || "",
-      assignedTo: ticket.assignedTo?._id || "",
+      planId: ticket.plan?._id || ticket.plan?.id || "",
+      assignedTo: ticket.assignedTo?._id || ticket.assignedTo?.id || "",
     };
   };
 
@@ -197,17 +200,43 @@ const TicketForm = () => {
     if (name === "clientId") setSelectedClientId(value);
   };
 
+  // Build auto-fill default values when not editing and URL provides client/plan
+  const autoFillValues = (() => {
+    if (!clientIdFromURL && !planIdFromURL) return {};
+
+    const v = {
+      clientId: clientIdFromURL || "",
+      planId: planIdFromURL || "",
+    };
+
+    if (clientAutoData) {
+      const assignedToId =
+        clientAutoData.assignedCare?._id ||
+        clientAutoData.assignedCare?.id ||
+        clientAutoData.assignedSales?._id ||
+        clientAutoData.assignedSales?.id ||
+        "";
+
+      v.assignedTo = assignedToId || "";
+      v.subject = clientAutoData.name ? `${clientAutoData.name} - Ticket` : v.subject;
+    }
+
+    return v;
+  })();
+
   return (
     <CrudFormPage
+      key={clientAutoData ? `autofill-${clientAutoData._id || clientAutoData.id}` : clientIdFromURL || "ticket-form"}
       title="Ticket"
       schema={schema}
-      defaultValues={defaultValues}
+      defaultValues={{ ...defaultValues, ...autoFillValues }}
       fields={fields}
       createFn={createFn}
       updateFn={updateFn}
       fetcher={fetcher}
       redirectPath="/tickets"
       onFieldChange={handleFieldChange}
+      enableReinitialize={true}
     />
   );
 };
