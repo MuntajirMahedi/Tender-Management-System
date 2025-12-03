@@ -6,6 +6,10 @@ import CrudFormPage from "../common/CrudFormPage";
 import { clientApi, userApi } from "../../api";
 import { CLIENT_STATUSES } from "../../utils/constants";
 
+// ⭐ PHONE INPUT IMPORT
+import PhoneInput from "react-phone-input-2";
+import "react-phone-input-2/lib/style.css";
+
 //
 // Validation
 //
@@ -47,7 +51,7 @@ const ClientForm = () => {
   const [users, setUsers] = useState([]);
 
   //
-  // Load Users for dropdown
+  // Load Users
   //
   useEffect(() => {
     userApi
@@ -57,7 +61,7 @@ const ClientForm = () => {
   }, []);
 
   //
-  // User dropdown options
+  // Dropdown options
   //
   const userOptions = useMemo(
     () =>
@@ -68,26 +72,62 @@ const ClientForm = () => {
     [users]
   );
 
-  //
-  // ⭐ FIXED Status dropdown options
-  //
-  const statusOptions = useMemo(
-    () =>
-      CLIENT_STATUSES.map((st) => ({
-        value: st,
-        label: st,
-      })),
-    []
-  );
+  const statusOptions = CLIENT_STATUSES.map((st) => ({
+    value: st,
+    label: st,
+  }));
 
   //
-  // Form fields
+  // Form fields with MOBILE PHONE INPUT
   //
   const fields = [
     { name: "name", label: "Client Name *" },
     { name: "companyName", label: "Company (Optional)" },
-    { name: "mobile", label: "Mobile *" },
-    { name: "altMobile", label: "Alt Mobile (Optional)" },
+
+    // ⭐ MOBILE Input with Country Code
+    {
+      name: "mobile",
+      label: "Mobile *",
+      customRender: ({ value, onChange }) => (
+        <PhoneInput
+          country={"in"}
+          enableSearch={true}
+          value={value}
+          onChange={(phone) => onChange(phone)}
+          inputClass="form-control"
+          containerClass="w-100"
+          inputStyle={{ height: "38px", fontSize: "14px" }}
+          buttonStyle={{
+            height: "38px",
+            border: "1px solid #ced4da",
+            backgroundColor: "#f8f9fa",
+          }}
+        />
+      ),
+    },
+
+    // ⭐ Alt Mobile with Country Code
+    {
+      name: "altMobile",
+      label: "Alt Mobile (Optional)",
+      customRender: ({ value, onChange }) => (
+        <PhoneInput
+          country={"in"}
+          enableSearch={true}
+          value={value}
+          onChange={(phone) => onChange(phone)}
+          inputClass="form-control"
+          containerClass="w-100"
+          inputStyle={{ height: "38px", fontSize: "14px" }}
+          buttonStyle={{
+            height: "38px",
+            border: "1px solid #ced4da",
+            backgroundColor: "#f8f9fa",
+          }}
+        />
+      ),
+    },
+
     { name: "email", label: "Email (Optional)", type: "email" },
     { name: "altEmail", label: "Alt Email (Optional)", type: "email" },
 
@@ -122,12 +162,12 @@ const ClientForm = () => {
       name: "status",
       label: "Status *",
       type: "select",
-      options: statusOptions, // ⭐ FIXED WORKING DROPDOWN
+      options: statusOptions,
     },
   ];
 
   //
-  // Transform Payload
+  // Transform payload before sending
   //
   const transformPayload = (payload) => {
     const p = { ...payload };
@@ -142,7 +182,7 @@ const ClientForm = () => {
   };
 
   //
-  // Create client
+  // Create Client
   //
   const createFn = async (payload) => {
     try {
@@ -156,7 +196,7 @@ const ClientForm = () => {
   };
 
   //
-  // Update client
+  // Update Client
   //
   const updateFn = async (id, payload) => {
     try {
@@ -170,7 +210,7 @@ const ClientForm = () => {
   };
 
   //
-  // Prefill on edit
+  // Prefill for editing
   //
   const fetcher = async (id) => {
     const { client } = await clientApi.getClient(id);

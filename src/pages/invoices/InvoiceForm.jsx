@@ -41,7 +41,7 @@ const InvoiceForm = () => {
 
   const [selectedClientId, setSelectedClientId] = useState("");
 
-  // Load dropdown data
+  // Load dropdown values
   useEffect(() => {
     clientApi.getClients().then((res) => setClients(res.clients || []));
     planApi.getPlans().then((res) => setPlans(res.plans || []));
@@ -57,7 +57,7 @@ const InvoiceForm = () => {
     [clients]
   );
 
-  // ⭐ Payment Status dropdown FIX
+  // Payment statuses
   const paymentStatusOptions = useMemo(
     () =>
       PAYMENT_STATUSES.map((st) => ({
@@ -67,19 +67,28 @@ const InvoiceForm = () => {
     []
   );
 
-  // ⭐ Filter plans by selected client
+  // ⭐ ALL plans map (lookup)
+  const planLookup = useMemo(() => {
+    const map = {};
+    plans.forEach((p) => {
+      map[p._id || p.id] = p; // FIXED
+    });
+    return map;
+  }, [plans]);
+
+  // ⭐ Filter plans by client
   const planOptions = useMemo(() => {
     if (!selectedClientId) return [];
 
     return plans
-      .filter((p) => p.client?._id === selectedClientId)
+      .filter((p) => (p.client?._id || p.client?.id) === selectedClientId)
       .map((p) => ({
         value: p._id || p.id,
         label: `${p.planName} (${p.client?.name})`,
       }));
   }, [plans, selectedClientId]);
 
-  // Form Fields
+  // Form fields
   const fields = [
     {
       name: "clientId",
@@ -93,22 +102,17 @@ const InvoiceForm = () => {
       type: "select",
       options: planOptions,
     },
-
     { name: "invoiceDate", label: "Invoice Date *", type: "date" },
     { name: "dueDate", label: "Due Date *", type: "date" },
-
-    { name: "baseAmount", label: "Base Amount *", type: "number" },
-    { name: "discount", label: "Discount", type: "number" },
-
-    { name: "taxPercent", label: "Tax % *", type: "number" },
-
+    { name: "baseAmount", label: "Base Amount *", type: "number", min: 0 },
+    { name: "discount", label: "Discount", type: "number", min: 0 },
+    { name: "taxPercent", label: "Tax % *", type: "number", min: 0 },
     {
       name: "paymentStatus",
       label: "Payment Status *",
       type: "select",
-      options: paymentStatusOptions, // ← FIXED
+      options: paymentStatusOptions,
     },
-
     { name: "notes", label: "Notes", isTextArea: true, col: "col-12" },
   ];
 
@@ -142,13 +146,13 @@ const InvoiceForm = () => {
     }
   };
 
-  // Fetch invoice on edit
+  // Load invoice on edit
   const fetcher = async (id) => {
     const { invoice } = await invoiceApi.getInvoice(id);
 
     const cid = invoice.client?._id;
 
-    // Auto-update plans dropdown
+    // Auto-filter plans
     setSelectedClientId(cid);
 
     return {
@@ -162,10 +166,30 @@ const InvoiceForm = () => {
     };
   };
 
-  // Handle client change → update plans
-  const handleFieldChange = (name, value) => {
+  // ⭐ AUTO-FILL LOGIC
+  const handleFieldChange = (name, value, values, setValue) => {
     if (name === "clientId") {
       setSelectedClientId(value);
+      return;
+    }
+
+    if (name === "planId") {
+      const plan = planLookup[value];
+      if (!plan) return;
+
+      setValue("baseAmount", plan.amount || 0);
+      setValue("discount", plan.discount || 0);
+      setValue("taxPercent", plan.taxPercent || 18);
+      setValue("notes", plan.remarks || "");
+
+      // Invoice date
+      const today = new Date().toISOString().substring(0, 10);
+      setValue("invoiceDate", today);
+
+      // +7 days
+      const due = new Date();
+      due.setDate(due.getDate() + 7);
+      setValue("dueDate", due.toISOString().substring(0, 10));
     }
   };
 

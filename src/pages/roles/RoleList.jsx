@@ -1,10 +1,10 @@
-// src/pages/roles/RoleList.jsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 
 import { roleApi } from "../../api";
 import useDebounce from "../../hooks/useDebounce";
+import PageHeader from "../../components/PageHeader";
 
 const columns = [
   { key: "name", label: "Name", dataIndex: "name" },
@@ -29,11 +29,16 @@ const RoleList = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // DELETE MODAL STATE
+  // DELETE MODAL
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteName, setDeleteName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
+
+  // MULTI SELECT
+  const [selected, setSelected] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -53,7 +58,6 @@ const RoleList = () => {
         setRoles(list);
       } catch (err) {
         toast.error("Unable to load roles");
-        setRoles([]);
       } finally {
         setLoading(false);
       }
@@ -62,87 +66,133 @@ const RoleList = () => {
     load();
   }, []);
 
-  // Filter + Search
+  // FILTER + SEARCH
   const filtered = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
     if (!term) return roles;
 
-    return roles.filter((r) => {
-      return (
+    return roles.filter(
+      (r) =>
         (r.name || "").toLowerCase().includes(term) ||
         (r.key || "").toLowerCase().includes(term)
-      );
-    });
+    );
   }, [roles, debouncedSearch]);
 
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.min(page, totalPages);
-
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, total);
   const paginatedRoles = filtered.slice(startIndex, endIndex);
 
-  // Pagination functions
-  const handlePageSizeChange = (e) => {
-    setPageSize(Number(e.target.value) || 10);
-    setPage(1);
-  };
-
-  const handlePrev = () => {
-    if (currentPage > 1) setPage(currentPage - 1);
-  };
-
-  const handleNext = () => {
-    if (currentPage < totalPages) setPage(currentPage + 1);
-  };
-
-  // 🔥 SHOW DELETE MODAL
+  /* ---------------------------------------
+        SINGLE DELETE
+  --------------------------------------- */
   const confirmDelete = (id, name) => {
+    setIsBulkDelete(false);
     setDeleteId(id);
     setDeleteName(name);
     setShowDeleteModal(true);
   };
 
-  // 🔥 ACTUAL DELETE
+  /* ---------------------------------------
+        BULK DELETE OPEN
+  --------------------------------------- */
+  const openBulkDelete = () => {
+    if (selected.length === 0) {
+      toast.info("No roles selected");
+      return;
+    }
+
+    setIsBulkDelete(true);
+    setDeleteName(`${selected.length} roles`);
+    setShowDeleteModal(true);
+  };
+
+  /* ---------------------------------------
+        DELETE HANDLER
+  --------------------------------------- */
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
-      await roleApi.deleteRole(deleteId);
 
-      toast.success(`Role "${deleteName}" deleted`);
+      if (isBulkDelete) {
+        await Promise.all(selected.map((id) => roleApi.deleteRole(id)));
 
-      setRoles((prev) => prev.filter((r) => (r._id || r.id) !== deleteId));
+        setRoles((prev) =>
+          prev.filter((r) => !selected.includes(r._id || r.id))
+        );
+
+        toast.success("Selected roles deleted");
+
+        setSelected([]);
+        setSelectAll(false);
+      } else {
+        await roleApi.deleteRole(deleteId);
+
+        setRoles((prev) =>
+          prev.filter((r) => (r._id || r.id) !== deleteId)
+        );
+
+        toast.success(`Role "${deleteName}" deleted`);
+      }
+
       setShowDeleteModal(false);
     } catch (err) {
-      toast.error("Failed to delete role");
+      toast.error("Delete failed");
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  /* ---------------------------------------
+        MULTI SELECT LOGIC
+  --------------------------------------- */
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectAll) {
+      setSelected([]);
+    } else {
+      const ids = paginatedRoles.map((r) => r._id || r.id);
+      setSelected(ids);
+    }
+    setSelectAll(!selectAll);
   };
 
   return (
     <div>
       {/* HEADER */}
       <div className="d-flex justify-content-between align-items-center mb-3">
-        <div>
-          <h4 className="mb-0">Roles</h4>
-          <small className="text-muted">
-            Manage system roles and their permissions
-          </small>
-        </div>
+        <PageHeader
+          title="Roles"
+          subtitle="Manage system roles and their permissions"
+        />
 
-        <Link to="/roles/new" className="btn btn-primary">
-          <i className="bi bi-plus-lg me-2" />
-          New Role
-        </Link>
+        <div className="d-flex gap-2">
+          {selected.length > 0 && (
+            <button className="btn btn-danger" onClick={openBulkDelete}>
+              <i className="bi bi-trash me-1" />
+              Delete Selected ({selected.length})
+            </button>
+          )}
+
+          <Link to="/roles/new" className="btn btn-primary">
+            <i className="bi bi-plus-lg me-2" />
+            New Role
+          </Link>
+        </div>
       </div>
 
       {/* SEARCH */}
       <div className="card mb-3">
         <div className="card-body row g-3 align-items-end">
           <div className="col-sm-6 col-md-4">
-            <label className="form-label text-muted small mb-1">Search</label>
+            <label className="form-label text-muted small">Search</label>
             <input
               className="form-control form-control-sm"
               placeholder="Search by role name or key"
@@ -158,82 +208,107 @@ const RoleList = () => {
 
       {/* TABLE */}
       <div className="card shadow-sm">
-        <div className="card-body p-0">
-          {loading ? (
-            <p className="p-3 mb-0">Loading...</p>
-          ) : filtered.length === 0 ? (
-            <p className="p-3 mb-0 text-muted">No roles found.</p>
-          ) : (
-            <div className="table-responsive">
-              <table className="table table-striped table-hover mb-0 align-middle">
-                <thead className="table-light">
-                  <tr>
-                    {columns.map((col) => (
-                      <th key={col.key}>{col.label}</th>
-                    ))}
-                    <th width="200">Actions</th>
-                  </tr>
-                </thead>
+        <div className="table-responsive">
+          <table className="table table-striped table-hover mb-0 align-middle">
+            <thead className="table-light">
+              <tr>
+                <th width="50">
+                  <input
+                    type="checkbox"
+                    checked={selectAll}
+                    onChange={handleSelectAll}
+                  />
+                </th>
 
-                <tbody>
-                  {paginatedRoles.map((row) => {
-                    const rowId = row._id || row.id;
+                {columns.map((col) => (
+                  <th key={col.key}>{col.label}</th>
+                ))}
 
-                    return (
-                      <tr key={rowId}>
-                        {columns.map((col) => (
-                          <td key={col.key}>
-                            {col.render
-                              ? col.render(row[col.dataIndex], row)
-                              : row[col.dataIndex]}
-                          </td>
-                        ))}
+                <th width="200">Actions</th>
+              </tr>
+            </thead>
 
-                        <td>
-                          <div className="btn-group btn-group-sm">
-                            <Link
-                              to={`/roles/${rowId}`}
-                              className="btn btn-outline-secondary"
-                            >
-                              View
-                            </Link>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={columns.length + 2} className="p-3">
+                    Loading...
+                  </td>
+                </tr>
+              ) : paginatedRoles.length === 0 ? (
+                <tr>
+                  <td colSpan={columns.length + 2} className="p-3 text-muted">
+                    No roles found.
+                  </td>
+                </tr>
+              ) : (
+                paginatedRoles.map((row) => {
+                  const rowId = row._id || row.id;
 
-                            <Link
-                              to={`/roles/${rowId}/edit`}
-                              className="btn btn-outline-primary"
-                            >
-                              Edit
-                            </Link>
+                  return (
+                    <tr key={rowId}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selected.includes(rowId)}
+                          onChange={() => toggleSelect(rowId)}
+                        />
+                      </td>
 
-                            <button
-                              className="btn btn-outline-danger"
-                              onClick={() => confirmDelete(rowId, row.name)}
-                            >
-                              Delete
-                            </button>
-                          </div>
+                      {columns.map((col) => (
+                        <td key={col.key}>
+                          {col.render
+                            ? col.render(row[col.dataIndex], row)
+                            : row[col.dataIndex]}
                         </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
+                      ))}
 
-              </table>
-            </div>
-          )}
+                      <td>
+                        <div className="btn-group btn-group-sm">
+                          <Link
+                            to={`/roles/${rowId}`}
+                            className="btn btn-outline-secondary"
+                          >
+                            View
+                          </Link>
+
+                          <Link
+                            to={`/roles/${rowId}/edit`}
+                            className="btn btn-outline-primary"
+                          >
+                            Edit
+                          </Link>
+
+                          <button
+                            className="btn btn-outline-danger"
+                            onClick={() => confirmDelete(rowId, row.name)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
 
         {/* PAGINATION */}
         {!loading && filtered.length > 0 && (
           <div className="card-footer d-flex justify-content-between align-items-center">
-
             <div className="d-flex align-items-center gap-2">
               <span className="text-muted small">Show</span>
+
               <select
                 className="form-select form-select-sm"
                 style={{ width: "auto" }}
                 value={pageSize}
-                onChange={handlePageSizeChange}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
               >
                 {[5, 10, 20, 50, 100].map((n) => (
                   <option key={n} value={n}>
@@ -250,25 +325,22 @@ const RoleList = () => {
             <div className="d-flex align-items-center gap-2">
               <button
                 className="btn btn-sm btn-outline-secondary"
-                onClick={handlePrev}
                 disabled={currentPage <= 1}
+                onClick={() => setPage(currentPage - 1)}
               >
                 Prev
               </button>
 
-              <span className="small">
-                Page {currentPage} of {totalPages}
-              </span>
+              <span className="small">Page {currentPage} of {totalPages}</span>
 
               <button
                 className="btn btn-sm btn-outline-secondary"
-                onClick={handleNext}
                 disabled={currentPage >= totalPages}
+                onClick={() => setPage(currentPage + 1)}
               >
                 Next
               </button>
             </div>
-
           </div>
         )}
       </div>
@@ -285,16 +357,16 @@ const RoleList = () => {
                     <i className="bi bi-exclamation-triangle-fill me-2"></i>
                     Confirm Delete
                   </h5>
+
                   <button
                     className="btn-close"
                     disabled={isDeleting}
                     onClick={() => setShowDeleteModal(false)}
-                  ></button>
+                  />
                 </div>
 
                 <div className="modal-body">
-                  Are you sure you want to delete role
-                  <strong> {deleteName} </strong>?
+                  Are you sure you want to delete <strong>{deleteName}</strong>?
                 </div>
 
                 <div className="modal-footer">
@@ -319,7 +391,7 @@ const RoleList = () => {
             </div>
           </div>
 
-          <div className="modal-backdrop fade show"></div>
+          <div className="modal-backdrop fade show" />
         </>
       )}
     </div>

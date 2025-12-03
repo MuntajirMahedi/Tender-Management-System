@@ -9,26 +9,20 @@ import {
   INQUIRY_STATUSES
 } from "../../utils/constants";
 
+// ⭐ PHONE INPUT IMPORT (correct CSS)
+import PhoneInput from "react-phone-input-2";
+import "react-phone-input-2/lib/style.css";
+
 // ⭐ VALIDATION SCHEMA
 const schema = yup.object({
   name: yup.string().required("Prospect name is required"),
+  email: yup.string().email("Enter a valid email").required("Email is required"),
 
-  email: yup
-    .string()
-    .email("Enter a valid email")
-    .required("Email is required"),
-
-  mobile: yup
-    .string()
-    .required("Mobile number is required")
-    .matches(/^[0-9]{10}$/, "Enter valid 10-digit mobile"),
+  mobile: yup.string().required("Mobile number is required"),
 
   assignedTo: yup.string().required("Assigned To is required"),
-
   nextFollowUpDate: yup.string().required("Next Follow-Up date is required"),
-
   interestLevel: yup.string().required("Interest Level is required"),
-
   status: yup.string().required("Status is required")
 });
 
@@ -54,8 +48,7 @@ const InquiryForm = () => {
     userApi
       .getUsers()
       .then((res) => setUsers(res.users || []))
-      .catch((error) => {
-        console.error("Unable to load users", error);
+      .catch(() => {
         toast.error("Unable to load users for assignment");
       });
   }, []);
@@ -69,7 +62,6 @@ const InquiryForm = () => {
     [users]
   );
 
-  // ⭐ PREPARE OPTIONS PROPERLY
   const interestLevelOptions = INQUIRY_INTEREST_LEVELS.map((lvl) => ({
     value: lvl,
     label: lvl
@@ -84,7 +76,34 @@ const InquiryForm = () => {
   const fields = [
     { name: "name", label: "Prospect Name *" },
     { name: "companyName", label: "Company (Optional)" },
-    { name: "mobile", label: "Mobile *" },
+
+    // ⭐ MOBILE FIELD — PERFECT HEIGHT + FLAG + COUNTRY CODE
+    {
+      name: "mobile",
+      label: "Mobile *",
+      customRender: ({ value, onChange }) => (
+        <PhoneInput
+          country={"in"}
+          enableSearch={true}
+          value={value}
+          onChange={(phone) => onChange(phone)}
+          containerClass="w-100"
+          inputClass="form-control"
+
+          // ⭐ PERFECT HEIGHT FIX (Bootstrap matching)
+          inputStyle={{
+            height: "38px",
+            fontSize: "14px"
+          }}
+          buttonStyle={{
+            height: "38px",
+            border: "1px solid #ced4da",
+            backgroundColor: "#f8f9fa"
+          }}
+        />
+      )
+    },
+
     { name: "email", label: "Email *", type: "email" },
     { name: "source", label: "Source (Optional)" },
 
@@ -94,26 +113,19 @@ const InquiryForm = () => {
       type: "select",
       options: interestLevelOptions
     },
-
     {
       name: "status",
       label: "Status *",
       type: "select",
       options: statusOptions
     },
-
     {
       name: "assignedTo",
       label: "Assigned To *",
       type: "select",
       options: userOptions
     },
-
-    {
-      name: "nextFollowUpDate",
-      label: "Next Follow-Up *",
-      type: "date"
-    },
+    { name: "nextFollowUpDate", label: "Next Follow-Up *", type: "date" },
 
     {
       name: "remarks",
@@ -130,7 +142,7 @@ const InquiryForm = () => {
       toast.success("Inquiry created successfully");
       return res;
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to create inquiry");
+      toast.error("Failed to create inquiry");
       throw err;
     }
   };
@@ -142,12 +154,12 @@ const InquiryForm = () => {
       toast.success("Inquiry updated successfully");
       return res;
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to update inquiry");
+      toast.error("Failed to update inquiry");
       throw err;
     }
   };
 
-  // ⭐ FETCH FOR EDIT
+  // ⭐ EDIT FETCHER
   const fetcher = async (id) => {
     const { inquiry } = await inquiryApi.getInquiry(id);
 

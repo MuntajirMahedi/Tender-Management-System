@@ -14,16 +14,16 @@ import useDebounce from "../../hooks/useDebounce";
 
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
+import PageHeader from "../../components/PageHeader";
 
 /**
  * InvoiceList.jsx
  * - Single invoice popup + PDF
  * - Export All invoices popup + PDF
- * - CSV export for visible (filtered) list
- * - Centered modal (fixed overlay) so it doesn't go under sidebar
+ * - Select (checkbox) / Delete selected (bulk) using modal (no window.confirm)
+ * - Checkboxes + Bulk delete visible only when permission allows
  */
 
-// Table columns
 const columns = [
   {
     key: "invoiceNumber",
@@ -42,7 +42,7 @@ const columns = [
     dataIndex: "totalAmount",
     align: "right",
     render: (value) => (
-      <div className="text-end fw-semibold">{formatCurrency(value || 0)}</div>
+      <div className="text-end fw-semibold">{formatCurrency(value || 0, "INR")}</div>
     ),
   },
   {
@@ -77,10 +77,16 @@ const InvoiceList = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
+  // Delete modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteName, setDeleteName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
+
+  // Multi-select
+  const [selected, setSelected] = useState([]); // selected invoice ids
+  const [selectAll, setSelectAll] = useState(false);
 
   // Single invoice preview
   const [showInvoicePopup, setShowInvoicePopup] = useState(false);
@@ -155,73 +161,100 @@ const InvoiceList = () => {
     setPage(1);
   };
 
+  /* -------------------------
+      MULTI SELECT HANDLERS
+  ------------------------- */
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (!canDelete) return; // don't allow if no permission
+
+    if (selectAll) {
+      setSelected([]);
+    } else {
+      const ids = paginatedInvoices.map((inv) => inv._id || inv.id);
+      setSelected(ids);
+    }
+    setSelectAll(!selectAll);
+  };
+
+  /* -------------------------
+      OPEN SINGLE DELETE MODAL
+  ------------------------- */
   const confirmDelete = (id, name) => {
+    if (!canDelete) return;
+
+    setIsBulkDelete(false);
     setDeleteId(id);
     setDeleteName(name);
     setShowDeleteModal(true);
   };
 
+  /* -------------------------
+      OPEN BULK DELETE MODAL
+  ------------------------- */
+  const openBulkDelete = () => {
+    if (!canDelete) return;
+
+    if (selected.length === 0) {
+      toast.info("No invoices selected");
+      return;
+    }
+
+    setIsBulkDelete(true);
+    setDeleteName(`${selected.length} invoices`);
+    setShowDeleteModal(true);
+  };
+
+  /* -------------------------
+      PERFORM DELETE (SINGLE / BULK)
+  ------------------------- */
   const handleDelete = async () => {
+    if (!canDelete) return;
+
     try {
       setIsDeleting(true);
-      await invoiceApi.deleteInvoice(deleteId);
 
-      setInvoices((prev) =>
-        prev.filter((inv) => (inv._id || inv.id) !== deleteId)
-      );
+      // BULK DELETE
+      if (isBulkDelete) {
+        await Promise.all(selected.map((id) => invoiceApi.deleteInvoice(id)));
 
-      toast.success("Invoice deleted");
+        setInvoices((prev) =>
+          prev.filter((inv) => !selected.includes(inv._id || inv.id))
+        );
+
+        toast.success("Selected invoices deleted");
+
+        setSelected([]);
+        setSelectAll(false);
+        setIsBulkDelete(false);
+      } else {
+        // SINGLE DELETE
+        await invoiceApi.deleteInvoice(deleteId);
+
+        setInvoices((prev) =>
+          prev.filter((inv) => (inv._id || inv.id) !== deleteId)
+        );
+
+        toast.success(`Invoice "${deleteName}" deleted`);
+      }
+
       setShowDeleteModal(false);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to delete invoice");
+      toast.error("Delete failed");
     } finally {
       setIsDeleting(false);
     }
   };
 
-  // ------------ CSV EXPORT for visible (filtered) list ------------
-  const escapeCSV = (s = "") => `"${String(s).replace(/"/g, '""')}"`;
-
-  const downloadCSV = (rows, filename = "invoices.csv") => {
-    const csv = rows.map((r) => r.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleExportCSV = () => {
-    if (!filtered.length) {
-      toast.info("No invoices to export");
-      return;
-    }
-
-    const headers = [
-      "Invoice Number",
-      "Client",
-      "Invoice Date",
-      "Total Amount",
-      "Payment Status",
-      "Notes",
-    ];
-    const rows = filtered.map((inv) => [
-      escapeCSV(inv.invoiceNumber),
-      escapeCSV(inv.client?.name || ""),
-      escapeCSV(formatDate(inv.invoiceDate)),
-      escapeCSV(formatCurrency(inv.totalAmount || 0)),
-      escapeCSV(inv.paymentStatus || ""),
-      escapeCSV(inv.notes || ""),
-    ]);
-
-    downloadCSV([headers, ...rows], `invoices_${new Date().toISOString().slice(0,10)}.csv`);
-    toast.success("CSV exported");
-  };
-
-  // ------------ SINGLE PDF export (uses previewInvoice) ------------
+  /* -------------------------
+      SINGLE INVOICE PDF
+  ------------------------- */
   const generateSinglePDF = async () => {
     if (!previewInvoice) {
       toast.error("No invoice selected");
@@ -256,7 +289,9 @@ const InvoiceList = () => {
     }
   };
 
-  // ------------ EXPORT ALL PDF (exports full invoices list shown in popup) ------------
+  /* -------------------------
+      EXPORT ALL PDF
+  ------------------------- */
   const generateAllPDF = async () => {
     try {
       const element = document.getElementById("all-invoice-area");
@@ -278,7 +313,7 @@ const InvoiceList = () => {
       const imgHeight = (canvas.height * pageWidth) / canvas.width;
 
       pdf.addImage(img, "PNG", 0, 0, pageWidth, imgHeight);
-      pdf.save(`ALL-INVOICES_${new Date().toISOString().slice(0,10)}.pdf`);
+      pdf.save(`ALL-INVOICES_${new Date().toISOString().slice(0, 10)}.pdf`);
       toast.success("All invoices PDF downloaded");
     } catch (err) {
       console.error("All PDF error", err);
@@ -292,11 +327,19 @@ const InvoiceList = () => {
         {/* HEADER */}
         <div className="d-flex justify-content-between align-items-center mb-3">
           <div>
-            <h4 className="mb-0">Invoices</h4>
-            <small className="text-muted">Manage all invoices</small>
+            <PageHeader title="Invoices" subtitle="Manage all invoices" />
           </div>
 
           <div className="d-flex gap-2">
+            {/* Bulk delete button - only when there are selected items AND user can delete */}
+            {selected.length > 0 && canDelete && (
+              <button className="btn btn-danger" onClick={openBulkDelete}>
+                <i className="bi bi-trash me-1" />
+                Delete Selected ({selected.length})
+              </button>
+            )}
+
+            {/* Export All (kept) */}
             <button
               className="btn btn-outline-success"
               onClick={() => setShowAllInvoicePopup(true)}
@@ -358,6 +401,17 @@ const InvoiceList = () => {
             <table className="table table-hover align-middle mb-0">
               <thead className="table-light">
                 <tr>
+                  {/* show checkbox column only if user can delete */}
+                  {canDelete && (
+                    <th width="50">
+                      <input
+                        type="checkbox"
+                        checked={selectAll}
+                        onChange={handleSelectAll}
+                      />
+                    </th>
+                  )}
+
                   {columns.map((col) => (
                     <th
                       key={col.key}
@@ -373,13 +427,13 @@ const InvoiceList = () => {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={columns.length + 1} className="text-center p-4">
+                    <td colSpan={(columns.length + (canDelete ? 2 : 1))} className="text-center p-4">
                       Loading...
                     </td>
                   </tr>
                 ) : paginatedInvoices.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length + 1} className="text-center p-4 text-muted">
+                    <td colSpan={(columns.length + (canDelete ? 2 : 1))} className="text-center p-4 text-muted">
                       No invoices found.
                     </td>
                   </tr>
@@ -388,6 +442,16 @@ const InvoiceList = () => {
                     const id = row._id || row.id;
                     return (
                       <tr key={id}>
+                        {canDelete && (
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selected.includes(id)}
+                              onChange={() => toggleSelect(id)}
+                            />
+                          </td>
+                        )}
+
                         {columns.map((col) => {
                           const val =
                             col.dataIndex === "client" ? row.client : row[col.dataIndex];
@@ -404,17 +468,16 @@ const InvoiceList = () => {
                         <td>
                           <div className="btn-group btn-group-sm">
                             <button
-                                  className="btn btn-outline-success"
-                                  onClick={() => {
-                                    setPreviewInvoice(row);
-                                    setShowInvoicePopup(true);
-                                    window.scrollTo({ top: 0, behavior: "smooth" });
-                                  }}
-                                  title="View Invoice"
-                                >
-                                  <i className="bi bi-receipt-cutoff fs-6"></i>
-                                </button>
-
+                              className="btn btn-outline-success"
+                              onClick={() => {
+                                setPreviewInvoice(row);
+                                setShowInvoicePopup(true);
+                                window.scrollTo({ top: 0, behavior: "smooth" });
+                              }}
+                              title="View Invoice"
+                            >
+                              <i className="bi bi-receipt-cutoff fs-6" />
+                            </button>
 
                             <Link to={`/invoices/${id}`} className="btn btn-outline-secondary">
                               View
@@ -493,9 +556,7 @@ const InvoiceList = () => {
           )}
         </div>
 
-        {/* ========================= */}
         {/* SINGLE INVOICE POPUP */}
-        {/* ========================= */}
         {showInvoicePopup && previewInvoice && (
           <div
             className="modal fade show d-block"
@@ -515,9 +576,7 @@ const InvoiceList = () => {
             >
               <div className="modal-content" style={{ borderRadius: 12 }}>
                 <div className="modal-header bg-primary text-white">
-                  <h5 className="modal-title">
-                    Invoice #{previewInvoice.invoiceNumber}
-                  </h5>
+                  <h5 className="modal-title">Invoice #{previewInvoice.invoiceNumber}</h5>
                   <button
                     className="btn-close btn-close-white"
                     onClick={() => setShowInvoicePopup(false)}
@@ -591,10 +650,10 @@ const InvoiceList = () => {
                         <tr>
                           <td>{previewInvoice.plan?.planType}</td>
                           <td>{previewInvoice.plan?.planName}</td>
-                          <td className="text-end">₹{formatCurrency(previewInvoice.baseAmount || 0)}</td>
+                          <td className="text-end">₹{formatCurrency(previewInvoice.baseAmount || 0, "INR")}</td>
                           <td className="text-end">{previewInvoice.discount || 0}{typeof previewInvoice.discount === "number" ? "%" : ""}</td>
-                          <td className="text-end">{previewInvoice.taxPercent || 0}% (₹{formatCurrency(previewInvoice.taxAmount || 0)})</td>
-                          <td className="text-end"><b>₹{formatCurrency(previewInvoice.totalAmount || 0)}</b></td>
+                          <td className="text-end">{previewInvoice.taxPercent || 0}% (₹{formatCurrency(previewInvoice.taxAmount || 0, "INR")})</td>
+                          <td className="text-end"><b>₹{formatCurrency(previewInvoice.totalAmount || 0, "INR")}</b></td>
                         </tr>
                       </tbody>
                     </table>
@@ -623,9 +682,7 @@ const InvoiceList = () => {
           </div>
         )}
 
-        {/* ========================= */}
         {/* ALL INVOICES POPUP (Export All) */}
-        {/* ========================= */}
         {showAllInvoicePopup && (
           <div
             className="modal fade show d-block"
@@ -682,7 +739,7 @@ const InvoiceList = () => {
                             </div>
 
                             <div style={{ textAlign: "right" }}>
-                              <div style={{ fontWeight: 700 }}>₹{formatCurrency(inv.totalAmount || 0)}</div>
+                              <div style={{ fontWeight: 700 }}>₹{formatCurrency(inv.totalAmount || 0, "INR")}</div>
                               <div style={{ color: inv.paymentStatus === "Paid" ? "#0f5132" : "#856404", marginTop: 6 }}>{inv.paymentStatus}</div>
                               <div style={{ color: "#666", fontSize: 13, marginTop: 6 }}>{formatDate(inv.invoiceDate)}</div>
                             </div>
@@ -702,10 +759,10 @@ const InvoiceList = () => {
                               <tbody>
                                 <tr>
                                   <td>{inv.plan?.planName}</td>
-                                  <td>₹{formatCurrency(inv.baseAmount || 0)}</td>
+                                  <td>₹{formatCurrency(inv.baseAmount || 0, "INR")}</td>
                                   <td>{inv.discount || 0}{typeof inv.discount === "number" ? "%" : ""}</td>
                                   <td>{inv.taxPercent || 0}%</td>
-                                  <td>₹{formatCurrency(inv.totalAmount || 0)}</td>
+                                  <td>₹{formatCurrency(inv.totalAmount || 0, "INR")}</td>
                                 </tr>
                               </tbody>
                             </table>
@@ -732,45 +789,54 @@ const InvoiceList = () => {
           </div>
         )}
 
-        {/* ========================= */}
-        {/* DELETE MODAL */}
-        {/* ========================= */}
+        {/* DELETE MODAL (single + bulk) — styled like PermissionList sample */}
         {showDeleteModal && (
-          <div
-            className="modal fade show d-block"
-            style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              background: "rgba(0,0,0,0.4)",
-              width: "100vw",
-              height: "100vh",
-              zIndex: 99999,
-            }}
-          >
-            <div className="modal-dialog modal-sm modal-dialog-centered" style={{ margin: "0 auto" }}>
-              <div className="modal-content">
-                <div className="modal-header">
-                  <h5>Confirm Delete</h5>
-                  <button className="btn-close" onClick={() => setShowDeleteModal(false)} />
-                </div>
+          <>
+            <div className="modal fade show d-block">
+              <div className="modal-dialog modal-dialog-centered">
+                <div className="modal-content">
 
-                <div className="modal-body">
-                  Delete invoice <b>{deleteName}</b> ?
-                </div>
+                  <div className="modal-header">
+                    <h5 className="modal-title text-danger">
+                      <i className="bi bi-exclamation-triangle-fill me-2"></i>
+                      Confirm Delete
+                    </h5>
 
-                <div className="modal-footer">
-                  <button className="btn btn-secondary" onClick={() => setShowDeleteModal(false)}>
-                    Cancel
-                  </button>
+                    <button
+                      className="btn-close"
+                      disabled={isDeleting}
+                      onClick={() => setShowDeleteModal(false)}
+                    ></button>
+                  </div>
 
-                  <button className="btn btn-danger" onClick={handleDelete} disabled={isDeleting}>
-                    {isDeleting ? "Deleting..." : "Yes, Delete"}
-                  </button>
+                  <div className="modal-body">
+                    Are you sure you want to delete <strong>{deleteName}</strong>?
+                  </div>
+
+                  <div className="modal-footer">
+                    <button
+                      className="btn btn-secondary"
+                      disabled={isDeleting}
+                      onClick={() => setShowDeleteModal(false)}
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      className="btn btn-danger"
+                      disabled={isDeleting}
+                      onClick={handleDelete}
+                    >
+                      {isDeleting ? "Deleting..." : "Yes, Delete"}
+                    </button>
+                  </div>
+
                 </div>
               </div>
             </div>
-          </div>
+
+            <div className="modal-backdrop fade show"></div>
+          </>
         )}
       </div>
     </RequirePermission>

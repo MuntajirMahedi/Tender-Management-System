@@ -9,6 +9,7 @@ import { CLIENT_STATUSES } from "../../utils/constants";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
 import useDebounce from "../../hooks/useDebounce";
+import PageHeader from "../../components/PageHeader";
 
 const columns = [
   {
@@ -20,7 +21,7 @@ const columns = [
         <div className="fw-semibold">{value}</div>
         <div className="text-muted small">{row.companyName || "—"}</div>
       </div>
-    )
+    ),
   },
   {
     key: "contact",
@@ -31,26 +32,26 @@ const columns = [
         <div>{value || "—"}</div>
         <div className="text-muted small">{row.email || "NA"}</div>
       </div>
-    )
+    ),
   },
   {
     key: "assignedSales",
     label: "Sales Owner",
     dataIndex: "assignedSales",
-    render: (value) => value?.name || "—"
+    render: (value) => value?.name || "—",
   },
   {
     key: "assignedCare",
     label: "Care Owner",
     dataIndex: "assignedCare",
-    render: (value) => value?.name || "—"
+    render: (value) => value?.name || "—",
   },
   {
     key: "status",
     label: "Status",
     dataIndex: "status",
-    render: (value) => <StatusBadge status={value} />
-  }
+    render: (value) => <StatusBadge status={value} />,
+  },
 ];
 
 const ClientList = () => {
@@ -64,11 +65,16 @@ const ClientList = () => {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Modal state
+  // DELETE MODAL STATE (single + bulk)
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteName, setDeleteName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
+
+  // MULTI SELECT
+  const [selected, setSelected] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -104,62 +110,112 @@ const ClientList = () => {
     load();
   }, []);
 
-  // Filter + Search combined
+  // FILTER + SEARCH
   const filtered = useMemo(() => {
-    const term = debouncedSearch.trim().toLowerCase();
+    const t = debouncedSearch.trim().toLowerCase();
 
     return clients.filter((c) => {
       if (statusFilter && c.status !== statusFilter) return false;
 
-      if (!term) return true;
+      if (!t) return true;
 
       return (
-        (c.name || "").toLowerCase().includes(term) ||
-        (c.companyName || "").toLowerCase().includes(term) ||
-        (c.mobile || "").toLowerCase().includes(term) ||
-        (c.email || "").toLowerCase().includes(term) ||
-        (c.clientCode || "").toLowerCase().includes(term)
+        (c.name || "").toLowerCase().includes(t) ||
+        (c.companyName || "").toLowerCase().includes(t) ||
+        (c.mobile || "").toLowerCase().includes(t) ||
+        (c.email || "").toLowerCase().includes(t) ||
+        (c.clientCode || "").toLowerCase().includes(t)
       );
     });
   }, [clients, statusFilter, debouncedSearch]);
 
+  // Pagination
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.min(page, totalPages);
+
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, total);
   const paginatedClients = filtered.slice(startIndex, endIndex);
 
   /* -------------------------
-      OPEN DELETE MODAL
+      SINGLE DELETE
   ------------------------- */
   const confirmDelete = (id, name) => {
+    setIsBulkDelete(false);
     setDeleteId(id);
     setDeleteName(name);
     setShowDeleteModal(true);
   };
 
   /* -------------------------
-      ACTUAL DELETE FUNCTION
+      BULK DELETE - OPEN MODAL
+  ------------------------- */
+  const openBulkDelete = () => {
+    if (selected.length === 0) {
+      toast.info("No clients selected");
+      return;
+    }
+
+    setIsBulkDelete(true);
+    setDeleteName(`${selected.length} clients`);
+    setShowDeleteModal(true);
+  };
+
+  /* -------------------------
+      DELETE HANDLE (single + bulk)
   ------------------------- */
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
 
-      await clientApi.deleteClient(deleteId);
+      if (isBulkDelete) {
+        await Promise.all(selected.map((id) => clientApi.deleteClient(id)));
 
-      toast.success(`Client "${deleteName}" deleted`);
+        setClients((prev) =>
+          prev.filter((c) => !selected.includes(c._id || c.id))
+        );
 
-      setClients((prev) =>
-        prev.filter((c) => (c._id || c.id) !== deleteId)
-      );
+        toast.success("Selected clients deleted");
+
+        setSelected([]);
+        setSelectAll(false);
+        setIsBulkDelete(false);
+      } else {
+        await clientApi.deleteClient(deleteId);
+
+        toast.success(`Client "${deleteName}" deleted`);
+
+        setClients((prev) =>
+          prev.filter((c) => (c._id || c.id) !== deleteId)
+        );
+      }
 
       setShowDeleteModal(false);
     } catch (err) {
-      toast.error("Failed to delete client");
+      toast.error("Delete failed");
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  /* -------------------------
+        MULTI SELECT
+  ------------------------- */
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectAll) {
+      setSelected([]);
+    } else {
+      const ids = paginatedClients.map((c) => c._id || c.id);
+      setSelected(ids);
+    }
+    setSelectAll(!selectAll);
   };
 
   return (
@@ -167,24 +223,30 @@ const ClientList = () => {
       <div>
         {/* HEADER */}
         <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h4 className="mb-0">Clients</h4>
-            <small className="text-muted">Manage all your clients</small>
-          </div>
+          <PageHeader title="Clients" subtitle="Manage all clients" />
 
-          {canCreate && (
-            <Link to="/clients/new" className="btn btn-primary">
-              <i className="bi bi-plus-lg me-2" />
-              New Client
-            </Link>
-          )}
+          <div className="d-flex gap-2">
+            {selected.length > 0 && (
+              <button className="btn btn-danger" onClick={openBulkDelete}>
+                <i className="bi bi-trash me-1"></i>
+                Delete Selected ({selected.length})
+              </button>
+            )}
+
+            {canCreate && (
+              <Link to="/clients/new" className="btn btn-primary">
+                <i className="bi bi-plus-lg me-2" />
+                New Client
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* FILTERS */}
         <div className="card mb-3">
           <div className="card-body row g-3 align-items-end">
             <div className="col-sm-4 col-md-3">
-              <label className="form-label small text-muted mb-1">Status</label>
+              <label className="form-label small text-muted">Status</label>
               <select
                 className="form-select form-select-sm"
                 value={statusFilter}
@@ -203,10 +265,10 @@ const ClientList = () => {
             </div>
 
             <div className="col-sm-8 col-md-4">
-              <label className="form-label small text-muted mb-1">Search</label>
+              <label className="form-label small text-muted">Search</label>
               <input
                 className="form-control form-control-sm"
-                placeholder="Search name, company, mobile, email, client code"
+                placeholder="Search name, company, mobile, email, code"
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -219,88 +281,109 @@ const ClientList = () => {
 
         {/* TABLE */}
         <div className="card shadow-sm">
-          <div className="card-body p-0">
-            {loading ? (
-              <p className="p-3 mb-0">Loading...</p>
-            ) : total === 0 ? (
-              <p className="p-3 mb-0 text-muted">No clients found.</p>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-striped table-hover mb-0 align-middle">
-                  <thead className="table-light">
-                    <tr>
-                      {columns.map((col) => (
-                        <th key={col.key}>{col.label}</th>
-                      ))}
-                      <th width="180">Actions</th>
-                    </tr>
-                  </thead>
+          <div className="table-responsive">
+            <table className="table table-striped table-hover mb-0 align-middle">
+              <thead className="table-light">
+                <tr>
+                  <th width="50">
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={handleSelectAll}
+                    />
+                  </th>
 
-                  <tbody>
-                    {paginatedClients.map((row) => {
-                      const rowId = row._id || row.id;
+                  {columns.map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
 
-                      return (
-                        <tr key={rowId}>
-                          {columns.map((col) => {
-                            let rawValue =
-                              col.dataIndex === "assignedSales"
-                                ? row.assignedSales
-                                : col.dataIndex === "assignedCare"
-                                ? row.assignedCare
-                                : row[col.dataIndex];
+                  <th width="180">Actions</th>
+                </tr>
+              </thead>
 
-                            return (
-                              <td key={col.key}>
-                                {col.render ? col.render(rawValue, row) : rawValue}
-                              </td>
-                            );
-                          })}
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3">
+                      Loading...
+                    </td>
+                  </tr>
+                ) : paginatedClients.length === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3 text-muted">
+                      No clients found.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedClients.map((row) => {
+                    const rowId = row._id || row.id;
 
-                          <td>
-                            <div className="btn-group btn-group-sm">
-                              {canView && (
-                                <Link
-                                  to={`/clients/${rowId}`}
-                                  className="btn btn-outline-secondary"
-                                >
-                                  View
-                                </Link>
-                              )}
+                    return (
+                      <tr key={rowId}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(rowId)}
+                            onChange={() => toggleSelect(rowId)}
+                          />
+                        </td>
 
-                              {canUpdate && (
-                                <Link
-                                  to={`/clients/${rowId}/edit`}
-                                  className="btn btn-outline-primary"
-                                >
-                                  Edit
-                                </Link>
-                              )}
+                        {columns.map((col) => {
+                          const raw =
+                            col.dataIndex === "assignedSales"
+                              ? row.assignedSales
+                              : col.dataIndex === "assignedCare"
+                              ? row.assignedCare
+                              : row[col.dataIndex];
 
-                              {canDelete && (
-                                <button
-                                  type="button"
-                                  className="btn btn-outline-danger"
-                                  onClick={() => confirmDelete(rowId, row.name)}
-                                >
-                                  Delete
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                          return (
+                            <td key={col.key}>
+                              {col.render ? col.render(raw, row) : raw}
+                            </td>
+                          );
+                        })}
+
+                        <td>
+                          <div className="btn-group btn-group-sm">
+                            {canView && (
+                              <Link
+                                to={`/clients/${rowId}`}
+                                className="btn btn-outline-secondary"
+                              >
+                                View
+                              </Link>
+                            )}
+
+                            {canUpdate && (
+                              <Link
+                                to={`/clients/${rowId}/edit`}
+                                className="btn btn-outline-primary"
+                              >
+                                Edit
+                              </Link>
+                            )}
+
+                            {canDelete && (
+                              <button
+                                className="btn btn-outline-danger"
+                                onClick={() => confirmDelete(rowId, row.name)}
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
 
           {/* PAGINATION */}
-          {!loading && total > 0 && (
+          {!loading && filtered.length > 0 && (
             <div className="card-footer d-flex justify-content-between align-items-center">
-
               <div className="d-flex align-items-center gap-2">
                 <span className="text-muted small">Show</span>
 
@@ -346,12 +429,11 @@ const ClientList = () => {
                   Next
                 </button>
               </div>
-
             </div>
           )}
         </div>
 
-        {/* ---------- DELETE CONFIRM MODAL ---------- */}
+        {/* DELETE MODAL */}
         {showDeleteModal && (
           <>
             <div className="modal fade show d-block">
@@ -363,6 +445,7 @@ const ClientList = () => {
                       <i className="bi bi-exclamation-triangle-fill me-2"></i>
                       Confirm Delete
                     </h5>
+
                     <button
                       className="btn-close"
                       disabled={isDeleting}
@@ -371,8 +454,8 @@ const ClientList = () => {
                   </div>
 
                   <div className="modal-body">
-                    Are you sure you want to delete client  
-                    <strong> {deleteName} </strong>?
+                    Are you sure you want to delete{" "}
+                    <strong>{deleteName}</strong>?
                   </div>
 
                   <div className="modal-footer">
@@ -400,7 +483,6 @@ const ClientList = () => {
             <div className="modal-backdrop fade show"></div>
           </>
         )}
-
       </div>
     </RequirePermission>
   );

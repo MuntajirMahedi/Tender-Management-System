@@ -107,6 +107,7 @@ const RenewalForm = () => {
       name: "durationMonths",
       label: "Duration (Months) *",
       type: "number",
+      min: 0,
     },
 
     {

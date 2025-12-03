@@ -4,6 +4,9 @@
   --tms-sidebar-bg: #0f1d3a;
   --tms-sidebar-active: rgba(255, 255, 255, 0.15);
   --tms-light: #f5f7fb;
+  --tms-sidebar-bg: #0f1d3a;
+  --tms-sidebar-active: rgba(255,255,255,0.15);
+  --tms-light: #f5f7fb;
 }
 
 /* RESET */
@@ -42,13 +45,30 @@ a {
   color: #fff;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   overflow-y: auto;
   position: fixed;
   left: 0;
   top: 0;
   z-index: 2000;
   transition: transform 0.35s ease;
+}
+
+/* Desktop = always open */
+@media (min-width: 992px) {
+  .sidebar {
+    transform: translateX(0);
+  }
+}
+
+/* Mobile = hidden until open */
+@media (max-width: 991px) {
+  .sidebar {
+    transform: translateX(-100%);
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
 }
 
 .sidebar .brand {
@@ -97,6 +117,15 @@ a {
   overflow: hidden;
 }
 
+/* Mobile: remove left margin */
+@media (max-width: 991px) {
+  .main-content {
+    margin-left: 0;
+  }
+}
+
+
+
 /* Topbar */
 .topbar {
   background: #fff;
@@ -127,6 +156,15 @@ a {
   overflow-y: auto;
   background: var(--tms-light);
 }
+
+/* ===== MOBILE OVERLAY ===== */
+.mobile-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1500;
+}
+
 
 /* ================================
    CARDS / GRID / TABLES

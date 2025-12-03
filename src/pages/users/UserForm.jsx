@@ -5,6 +5,10 @@ import * as yup from "yup";
 import { userApi, roleApi } from "../../api";
 import { toast } from "react-toastify";
 
+// ⭐ Phone Input (Country code + Flag)
+import PhoneInput from "react-phone-input-2";
+import "react-phone-input-2/lib/style.css";
+
 // Validation Schema
 const schema = yup.object({
   name: yup.string().required("Name is required"),
@@ -26,7 +30,7 @@ const defaultValues = {
 const UserForm = () => {
   const [roles, setRoles] = useState([]);
 
-  // ⭐ Load roles dynamically from API
+  // Load roles dynamically
   useEffect(() => {
     roleApi
       .getRoles()
@@ -34,25 +38,47 @@ const UserForm = () => {
       .catch(() => toast.error("Failed to load roles"));
   }, []);
 
-  // ⭐ Convert to dropdown format
+  // Role dropdown options
   const roleOptions = useMemo(
     () =>
       roles.map((r) => ({
-        value: r.key || r._id, // key preferred
+        value: r.key || r._id,
         label: r.name
       })),
     [roles]
   );
 
-  // Form fields
+  // ⭐ Form Fields (Mobile Input Added)
   const fields = [
     { name: "name", label: "Full Name *" },
     { name: "email", label: "Email *", type: "email" },
-    { name: "mobile", label: "Mobile *" },
 
-    // ⭐ dynamic dropdown
+    // ⭐ MOBILE with Country Code + Flag
+    {
+      name: "mobile",
+      label: "Mobile *",
+      customRender: ({ value, onChange }) => (
+        <PhoneInput
+          country={"in"}
+          enableSearch={true}
+          value={value}
+          onChange={(phone) => onChange(phone)}
+          inputClass="form-control"
+          containerClass="w-100"
+          inputStyle={{ height: "38px", fontSize: "14px" }}
+          buttonStyle={{
+            height: "38px",
+            border: "1px solid #ced4da",
+            backgroundColor: "#f8f9fa"
+          }}
+        />
+      )
+    },
+
+    // Role Dropdown
     { name: "role", label: "Role *", type: "select", options: roleOptions },
 
+    // Password
     { name: "password", label: "Password *", type: "password" }
   ];
 
@@ -94,7 +120,7 @@ const UserForm = () => {
 
         return {
           ...user,
-          password: "" // password never prefill
+          password: "" // Never prefill password
         };
       }}
     />

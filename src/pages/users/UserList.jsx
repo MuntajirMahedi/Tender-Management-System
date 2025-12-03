@@ -1,4 +1,3 @@
-// src/pages/users/UserList.jsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -8,6 +7,7 @@ import StatusBadge from "../../components/StatusBadge";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
 import useDebounce from "../../hooks/useDebounce";
+import PageHeader from "../../components/PageHeader";
 
 const columns = [
   { key: "name", label: "Name", dataIndex: "name" },
@@ -45,13 +45,18 @@ const UserList = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // DELETE MODAL STATE
+  // DELETE MODAL
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteName, setDeleteName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
 
-  // Load users
+  // MULTI SELECT
+  const [selected, setSelected] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
+
+  // LOAD USERS
   useEffect(() => {
     const load = async () => {
       try {
@@ -79,7 +84,7 @@ const UserList = () => {
     load();
   }, []);
 
-  // Filter + Search
+  // FILTER + SEARCH
   const filtered = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
     if (!term) return users;
@@ -102,36 +107,57 @@ const UserList = () => {
   const endIndex = Math.min(startIndex + pageSize, total);
   const paginatedUsers = filtered.slice(startIndex, endIndex);
 
-  const handlePageSizeChange = (e) => {
-    const value = Number(e.target.value) || 10;
-    setPageSize(value);
-    setPage(1);
-  };
-
-  const handlePrev = () => {
-    if (currentPage > 1) setPage(currentPage - 1);
-  };
-
-  const handleNext = () => {
-    if (currentPage < totalPages) setPage(currentPage + 1);
-  };
-
-  // 🔥 NEW — Delete Modal Triggers
+  /* ---------------------------------------
+         SINGLE DELETE OPEN MODAL
+  --------------------------------------- */
   const confirmDelete = (id, name) => {
     setDeleteId(id);
     setDeleteName(name);
+    setIsBulkDelete(false);
     setShowDeleteModal(true);
   };
 
-  // 🔥 NEW — Actual delete
+  /* ---------------------------------------
+         BULK DELETE OPEN MODAL
+  --------------------------------------- */
+  const openBulkDelete = () => {
+    if (selected.length === 0) {
+      toast.info("No users selected");
+      return;
+    }
+
+    setDeleteName(`${selected.length} users`);
+    setIsBulkDelete(true);
+    setShowDeleteModal(true);
+  };
+
+  /* ---------------------------------------
+         DELETE ACTION
+  --------------------------------------- */
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
-      await userApi.deleteUser(deleteId);
 
-      toast.success(`User "${deleteName}" deleted`);
+      if (isBulkDelete) {
+        await Promise.all(selected.map((id) => userApi.deleteUser(id)));
 
-      setUsers((prev) => prev.filter((u) => (u._id || u.id) !== deleteId));
+        setUsers((prev) =>
+          prev.filter((u) => !selected.includes(u._id || u.id))
+        );
+
+        toast.success("Selected users deleted");
+
+        setSelected([]);
+        setSelectAll(false);
+      } else {
+        await userApi.deleteUser(deleteId);
+
+        toast.success(`User "${deleteName}" deleted`);
+
+        setUsers((prev) =>
+          prev.filter((u) => (u._id || u.id) !== deleteId)
+        );
+      }
 
       setShowDeleteModal(false);
     } catch (err) {
@@ -141,22 +167,48 @@ const UserList = () => {
     }
   };
 
+  /* ---------------------------------------
+         MULTI SELECT LOGIC
+  --------------------------------------- */
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectAll) {
+      setSelected([]);
+    } else {
+      const ids = paginatedUsers.map((u) => u._id || u.id);
+      setSelected(ids);
+    }
+    setSelectAll(!selectAll);
+  };
+
   return (
     <RequirePermission permission="user:view">
       <div>
+
         {/* HEADER */}
         <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h4 className="mb-0">Users</h4>
-            <small className="text-muted">Manage all users and their access</small>
-          </div>
+          <PageHeader title="Users" subtitle="Manage all users and their access" />
 
-          {canCreate && (
-            <Link to="/users/new" className="btn btn-primary">
-              <i className="bi bi-plus-lg me-2" />
-              New User
-            </Link>
-          )}
+          <div className="d-flex gap-2">
+            {selected.length > 0 && (
+              <button className="btn btn-danger" onClick={openBulkDelete}>
+                <i className="bi bi-trash me-1"></i>
+                Delete Selected ({selected.length})
+              </button>
+            )}
+
+            {canCreate && (
+              <Link to="/users/new" className="btn btn-primary">
+                <i className="bi bi-plus-lg me-2" />
+                New User
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* SEARCH */}
@@ -179,76 +231,99 @@ const UserList = () => {
 
         {/* TABLE */}
         <div className="card shadow-sm">
-          <div className="card-body p-0">
-            {loading ? (
-              <p className="p-3">Loading...</p>
-            ) : filtered.length === 0 ? (
-              <p className="p-3 text-muted">No users found.</p>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-hover table-striped mb-0 align-middle">
-                  <thead className="table-light">
-                    <tr>
-                      {columns.map((col) => (
-                        <th key={col.key}>{col.label}</th>
-                      ))}
-                      <th width="200">Actions</th>
-                    </tr>
-                  </thead>
+          <div className="table-responsive">
+            <table className="table table-hover table-striped mb-0 align-middle">
+              <thead className="table-light">
+                <tr>
+                  <th width="50">
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={toggleSelectAll}
+                    />
+                  </th>
 
-                  <tbody>
-                    {paginatedUsers.map((row) => {
-                      const rowId = row._id || row.id;
+                  {columns.map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
 
-                      return (
-                        <tr key={rowId}>
-                          {columns.map((col) => {
-                            const raw = row[col.dataIndex];
-                            return (
-                              <td key={col.key}>
-                                {col.render ? col.render(raw, row) : raw}
-                              </td>
-                            );
-                          })}
+                  <th width="200">Actions</th>
+                </tr>
+              </thead>
 
-                          <td>
-                            <div className="btn-group btn-group-sm">
-                              {canView && (
-                                <Link
-                                  to={`/users/${rowId}`}
-                                  className="btn btn-outline-secondary"
-                                >
-                                  View
-                                </Link>
-                              )}
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3">
+                      Loading...
+                    </td>
+                  </tr>
+                ) : paginatedUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3 text-muted">
+                      No users found.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedUsers.map((row) => {
+                    const rowId = row._id || row.id;
 
-                              {canUpdate && (
-                                <Link
-                                  to={`/users/${rowId}/edit`}
-                                  className="btn btn-outline-primary"
-                                >
-                                  Edit
-                                </Link>
-                              )}
+                    return (
+                      <tr key={rowId}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(rowId)}
+                            onChange={() => toggleSelect(rowId)}
+                          />
+                        </td>
 
-                              {canDelete && (
-                                <button
-                                  className="btn btn-outline-danger"
-                                  onClick={() => confirmDelete(rowId, row.name)}
-                                >
-                                  Delete
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
+                        {columns.map((col) => {
+                          const raw = row[col.dataIndex];
+                          return (
+                            <td key={col.key}>
+                              {col.render ? col.render(raw, row) : raw}
+                            </td>
+                          );
+                        })}
 
-                </table>
-              </div>
-            )}
+                        <td>
+                          <div className="btn-group btn-group-sm">
+                            {canView && (
+                              <Link
+                                to={`/users/${rowId}`}
+                                className="btn btn-outline-secondary"
+                              >
+                                View
+                              </Link>
+                            )}
+
+                            {canUpdate && (
+                              <Link
+                                to={`/users/${rowId}/edit`}
+                                className="btn btn-outline-primary"
+                              >
+                                Edit
+                              </Link>
+                            )}
+
+                            {canDelete && (
+                              <button
+                                className="btn btn-outline-danger"
+                                onClick={() => confirmDelete(rowId, row.name)}
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+
+            </table>
           </div>
 
           {/* PAGINATION */}
@@ -256,18 +331,22 @@ const UserList = () => {
             <div className="card-footer d-flex justify-content-between align-items-center">
 
               <div className="d-flex align-items-center gap-2">
-                <span className="text-muted small">Show</span>
+                <span className="small text-muted">Show</span>
                 <select
                   className="form-select form-select-sm"
                   style={{ width: "auto" }}
                   value={pageSize}
-                  onChange={handlePageSizeChange}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
                 >
                   {[5, 10, 20, 50, 100].map((n) => (
                     <option key={n} value={n}>{n}</option>
                   ))}
                 </select>
-                <span className="text-muted small">
+
+                <span className="small text-muted">
                   Showing {startIndex + 1}–{endIndex} of {total}
                 </span>
               </div>
@@ -276,19 +355,17 @@ const UserList = () => {
                 <button
                   className="btn btn-sm btn-outline-secondary"
                   disabled={currentPage <= 1}
-                  onClick={handlePrev}
+                  onClick={() => setPage(currentPage - 1)}
                 >
                   Prev
                 </button>
 
-                <span className="small">
-                  Page {currentPage} of {totalPages}
-                </span>
+                <span className="small">Page {currentPage} of {totalPages}</span>
 
                 <button
                   className="btn btn-sm btn-outline-secondary"
                   disabled={currentPage >= totalPages}
-                  onClick={handleNext}
+                  onClick={() => setPage(currentPage + 1)}
                 >
                   Next
                 </button>
@@ -307,19 +384,18 @@ const UserList = () => {
 
                   <div className="modal-header">
                     <h5 className="modal-title text-danger">
-                      <i className="bi bi-exclamation-triangle-fill me-2"></i>
+                      <i className="bi bi-exclamation-triangle-fill me-2" />
                       Confirm Delete
                     </h5>
                     <button
                       className="btn-close"
                       disabled={isDeleting}
                       onClick={() => setShowDeleteModal(false)}
-                    ></button>
+                    />
                   </div>
 
                   <div className="modal-body">
-                    Are you sure you want to delete user  
-                    <strong> {deleteName} </strong>?
+                    Are you sure you want to delete <strong>{deleteName}</strong>?
                   </div>
 
                   <div className="modal-footer">
@@ -344,9 +420,10 @@ const UserList = () => {
               </div>
             </div>
 
-            <div className="modal-backdrop fade show"></div>
+            <div className="modal-backdrop fade show" />
           </>
         )}
+
       </div>
     </RequirePermission>
   );

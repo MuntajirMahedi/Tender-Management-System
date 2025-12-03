@@ -104,19 +104,23 @@ const InquiryView = () => {
   };
 
   const handleConvert = async () => {
-    try {
-      await inquiryApi.convertToClient(id);
-      toast.success("Inquiry converted to client successfully");
-      loadDetails();
-    } catch (err) {
-      console.error("Unable to convert inquiry", err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Unable to convert inquiry";
-      toast.error(msg);
-    }
-  };
+  try {
+    await inquiryApi.convertToClient(id);
+    toast.success("Inquiry converted to client successfully");
+
+    // 👉 redirect to clients page
+    navigate("/clients");
+
+  } catch (err) {
+    console.error("Unable to convert inquiry", err);
+    const msg =
+      err?.response?.data?.message ||
+      err?.message ||
+      "Unable to convert inquiry";
+    toast.error(msg);
+  }
+};
+
 
   // 🔽 called when user CONFIRMS delete in modal
   const handleDelete = async () => {

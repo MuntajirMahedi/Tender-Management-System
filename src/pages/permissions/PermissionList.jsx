@@ -1,4 +1,3 @@
-// src/pages/permissions/PermissionList.jsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -7,11 +6,12 @@ import { permissionApi } from "../../api";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
 import useDebounce from "../../hooks/useDebounce";
+import PageHeader from "../../components/PageHeader";
 
 const columns = [
   { key: "name", label: "Name", dataIndex: "name" },
   { key: "code", label: "Code", dataIndex: "code" },
-  { key: "module", label: "Module", dataIndex: "module" }
+  { key: "module", label: "Module", dataIndex: "module" },
 ];
 
 const PermissionList = () => {
@@ -32,16 +32,22 @@ const PermissionList = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // ⭐ Delete Modal State
+  // Delete modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteName, setDeleteName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
+
+  // MULTI SELECT
+  const [selected, setSelected] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
+
         const res = await permissionApi.getPermissions();
 
         const list =
@@ -65,85 +71,144 @@ const PermissionList = () => {
     load();
   }, []);
 
-  // search filter
+  // Search filter
   const filtered = useMemo(() => {
-    const term = debouncedSearch.trim().toLowerCase();
-    if (!term) return permissions;
+    const t = debouncedSearch.trim().toLowerCase();
+    if (!t) return permissions;
 
     return permissions.filter((p) => {
       const name = (p.name || "").toLowerCase();
       const code = (p.code || "").toLowerCase();
       const module = (p.module || "").toLowerCase();
-      return (
-        name.includes(term) ||
-        code.includes(term) ||
-        module.includes(term)
-      );
+      return name.includes(t) || code.includes(t) || module.includes(t);
     });
   }, [permissions, debouncedSearch]);
 
   const total = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const currentPage = Math.min(page, totalPages);
+  const totalPages = Math.ceil(total / pageSize);
+  const currentPage = Math.min(page, totalPages || 1);
 
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, total);
-  const paginated = filtered.slice(startIndex, endIndex);
+  const start = (currentPage - 1) * pageSize;
+  const end = Math.min(start + pageSize, total);
+  const paginated = filtered.slice(start, end);
 
   const handlePageSizeChange = (e) => {
-    const value = Number(e.target.value) || 10;
-    setPageSize(value);
+    setPageSize(Number(e.target.value) || 10);
     setPage(1);
   };
 
-  // ⭐ OPEN DELETE MODAL
+  /* ---------------------------
+        SINGLE DELETE
+  ----------------------------- */
   const confirmDelete = (id, name) => {
+    if (!canDelete) return;
+
+    setIsBulkDelete(false);
     setDeleteId(id);
     setDeleteName(name);
     setShowDeleteModal(true);
   };
 
-  // ⭐ ACTUAL DELETE
+  /* ---------------------------
+        BULK DELETE OPEN
+  ----------------------------- */
+  const openBulkDelete = () => {
+    if (selected.length === 0) {
+      toast.info("No permissions selected");
+      return;
+    }
+
+    setIsBulkDelete(true);
+    setDeleteName(`${selected.length} permissions`);
+    setShowDeleteModal(true);
+  };
+
+  /* ---------------------------
+        DELETE ACTION
+  ----------------------------- */
   const handleDelete = async () => {
     if (!canDelete) return;
 
     try {
       setIsDeleting(true);
 
-      await permissionApi.deletePermission(deleteId);
+      if (isBulkDelete) {
+        await Promise.all(selected.map((id) => permissionApi.deletePermission(id)));
 
-      toast.success(`Permission "${deleteName}" deleted`);
+        setPermissions((prev) =>
+          prev.filter((p) => !selected.includes(p._id || p.id))
+        );
 
-      setPermissions((prev) =>
-        prev.filter((p) => (p._id || p.id) !== deleteId)
-      );
+        toast.success("Selected permissions deleted");
+
+        setSelected([]);
+        setSelectAll(false);
+      } else {
+        await permissionApi.deletePermission(deleteId);
+
+        toast.success(`Permission "${deleteName}" deleted`);
+
+        setPermissions((prev) =>
+          prev.filter((p) => (p._id || p.id) !== deleteId)
+        );
+      }
 
       setShowDeleteModal(false);
     } catch (err) {
-      toast.error("Failed to delete permission");
+      toast.error("Delete failed");
     } finally {
       setIsDeleting(false);
     }
   };
 
+  /* ---------------------------
+        MULTI SELECT LOGIC
+  ----------------------------- */
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectAll) {
+      setSelected([]);
+    } else {
+      const ids = paginated.map((p) => p._id || p.id);
+      setSelected(ids);
+    }
+    setSelectAll(!selectAll);
+  };
+
   return (
     <RequirePermission permission="permission:view">
       <div>
+
         {/* HEADER */}
         <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h4 className="mb-0">Permissions</h4>
-            <small className="text-muted">
-              Manage permission codes used throughout the system
-            </small>
-          </div>
+          <PageHeader
+            title="Permissions"
+            subtitle="Manage permission codes used throughout the system"
+          />
 
-          {canCreate && (
-            <Link to="/permissions/new" className="btn btn-primary">
-              <i className="bi bi-plus-lg me-2" />
-              New Permission
-            </Link>
-          )}
+          <div className="d-flex gap-2">
+            {/* BULK DELETE BTN */}
+            {selected.length > 0 && canDelete && (
+              <button className="btn btn-danger" onClick={openBulkDelete}>
+                <i className="bi bi-trash me-1"></i>
+                Delete Selected ({selected.length})
+              </button>
+            )}
+
+            {canCreate && (
+              <Link to="/permissions/new" className="btn btn-primary">
+                <i className="bi bi-plus-lg me-2" />
+                New Permission
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* SEARCH */}
@@ -166,67 +231,90 @@ const PermissionList = () => {
 
         {/* TABLE */}
         <div className="card shadow-sm">
-          <div className="card-body p-0">
-            {loading ? (
-              <p className="p-3 mb-0">Loading...</p>
-            ) : total === 0 ? (
-              <p className="p-3 mb-0 text-muted">No permissions found.</p>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-striped table-hover mb-0 align-middle">
-                  <thead className="table-light">
-                    <tr>
-                      {columns.map((col) => (
-                        <th key={col.key}>{col.label}</th>
-                      ))}
-                      <th style={{ width: "160px" }}>Actions</th>
-                    </tr>
-                  </thead>
+          <div className="table-responsive">
 
-                  <tbody>
-                    {paginated.map((row) => {
-                      const rowId = row._id || row.id;
+            <table className="table table-striped table-hover mb-0 align-middle">
+              <thead className="table-light">
+                <tr>
+                  <th width="50">
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={handleSelectAll}
+                    />
+                  </th>
 
-                      return (
-                        <tr key={rowId}>
-                          {columns.map((col) => {
-                            const value = row[col.dataIndex];
-                            return (
-                              <td key={col.key}>
-                                {col.render ? col.render(value, row) : value}
-                              </td>
-                            );
-                          })}
+                  {columns.map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
 
-                          {/* ACTIONS */}
-                          <td>
-                            <div className="btn-group btn-group-sm">
-                              {canUpdate && (
-                                <Link
-                                  to={`/permissions/${rowId}/edit`}
-                                  className="btn btn-outline-primary"
-                                >
-                                  Edit
-                                </Link>
-                              )}
+                  <th width="160">Actions</th>
+                </tr>
+              </thead>
 
-                              {canDelete && (
-                                <button
-                                  className="btn btn-outline-danger"
-                                  onClick={() => confirmDelete(rowId, row.name)}
-                                >
-                                  Delete
-                                </button>
-                              )}
-                            </div>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3">
+                      Loading...
+                    </td>
+                  </tr>
+                ) : paginated.length === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3 text-muted">
+                      No permissions found.
+                    </td>
+                  </tr>
+                ) : (
+                  paginated.map((row) => {
+                    const rowId = row._id || row.id;
+
+                    return (
+                      <tr key={rowId}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(rowId)}
+                            onChange={() => toggleSelect(rowId)}
+                          />
+                        </td>
+
+                        {columns.map((col) => (
+                          <td key={col.key}>
+                            {col.render
+                              ? col.render(row[col.dataIndex], row)
+                              : row[col.dataIndex]}
                           </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                        ))}
+
+                        <td>
+                          <div className="btn-group btn-group-sm">
+                            {canUpdate && (
+                              <Link
+                                to={`/permissions/${rowId}/edit`}
+                                className="btn btn-outline-primary"
+                              >
+                                Edit
+                              </Link>
+                            )}
+
+                            {canDelete && (
+                              <button
+                                className="btn btn-outline-danger"
+                                onClick={() => confirmDelete(rowId, row.name)}
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+
           </div>
 
           {/* PAGINATION */}
@@ -235,14 +323,13 @@ const PermissionList = () => {
 
               <div className="d-flex align-items-center gap-2">
                 <span className="text-muted small">Show</span>
-
                 <select
                   className="form-select form-select-sm"
                   style={{ width: "auto" }}
                   value={pageSize}
                   onChange={handlePageSizeChange}
                 >
-                  {[1, 5, 10, 20, 50, 100].map((n) => (
+                  {[5, 10, 20, 50, 100].map((n) => (
                     <option key={n} value={n}>
                       {n}
                     </option>
@@ -250,7 +337,7 @@ const PermissionList = () => {
                 </select>
 
                 <span className="text-muted small">
-                  Showing {startIndex + 1}–{endIndex} of {total}
+                  Showing {start + 1}–{end} of {total}
                 </span>
               </div>
 
@@ -264,7 +351,7 @@ const PermissionList = () => {
                 </button>
 
                 <span className="small">
-                  Page {currentPage} of {totalPages}
+                  Page {currentPage} of {totalPages || 1}
                 </span>
 
                 <button
@@ -280,7 +367,7 @@ const PermissionList = () => {
           )}
         </div>
 
-        {/* DELETE MODAL — SAME AS PAYMENT LIST */}
+        {/* DELETE MODAL */}
         {showDeleteModal && (
           <>
             <div className="modal fade show d-block">
@@ -292,6 +379,7 @@ const PermissionList = () => {
                       <i className="bi bi-exclamation-triangle-fill me-2"></i>
                       Confirm Delete
                     </h5>
+
                     <button
                       className="btn-close"
                       disabled={isDeleting}
@@ -300,8 +388,7 @@ const PermissionList = () => {
                   </div>
 
                   <div className="modal-body">
-                    Are you sure you want to delete permission{" "}
-                    <strong>{deleteName}</strong>?
+                    Are you sure you want to delete <strong>{deleteName}</strong>?
                   </div>
 
                   <div className="modal-footer">

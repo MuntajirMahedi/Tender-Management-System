@@ -40,6 +40,9 @@ const PlanForm = () => {
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
 
+  // 🔥 TOKEN amount show/hide
+  const [showToken, setShowToken] = useState(false);
+
   // Load Clients & Users
   useEffect(() => {
     clientApi
@@ -73,7 +76,6 @@ const PlanForm = () => {
     [users]
   );
 
-  // ⭐ FIX STATUS DROPDOWN
   const statusOptions = useMemo(
     () =>
       PLAN_STATUSES.map((st) => ({
@@ -83,7 +85,6 @@ const PlanForm = () => {
     []
   );
 
-  // ⭐ FIX PLAN TYPE DROPDOWN ALSO (PLAN_TYPES bhi string array hota hai)
   const planTypeOptions = useMemo(
     () =>
       PLAN_TYPES.map((type) => ({
@@ -93,7 +94,7 @@ const PlanForm = () => {
     []
   );
 
-  // Form Fields
+  // ⭐ FIELDS (Token amount dynamic)
   const fields = [
     {
       name: "clientId",
@@ -109,31 +110,46 @@ const PlanForm = () => {
       name: "planType",
       label: "Plan Type *",
       type: "select",
-      options: planTypeOptions // ⭐ FIXED
+      options: planTypeOptions,
+
+      // ⭐ FINAL FIX — No setValueFn inside
+      onChange: (e) => {
+        const val = e.target.value;
+        setShowToken(val === "DC");
+      }
     },
     {
       name: "amount",
       label: "Base Amount *",
-      type: "number"
+      type: "number",
+      min: 0
     },
 
-    { name: "discount", label: "Discount (Optional)", type: "number" },
-    { name: "taxPercent", label: "Tax %", type: "number" },
-    { name: "tokenAmount", label: "Token Amount (Optional)", type: "number" },
+    { name: "discount", label: "Discount (Optional)", type: "number", min: 0 },
+    { name: "taxPercent", label: "Tax %", type: "number", min: 0 },
+
+    // ⭐ SHOW ONLY IF DC
+    showToken && {
+      name: "tokenAmount",
+      label: "Token Amount (Optional)",
+      type: "number",
+      min: 0
+    },
 
     { name: "startDate", label: "Start Date *", type: "date" },
 
     {
       name: "durationMonths",
       label: "Duration Months",
-      type: "number"
+      type: "number",
+      min: 0,
     },
 
     {
       name: "status",
       label: "Plan Status *",
       type: "select",
-      options: statusOptions // ⭐ FIXED
+      options: statusOptions
     },
 
     {
@@ -149,7 +165,7 @@ const PlanForm = () => {
       isTextArea: true,
       col: "col-12"
     }
-  ];
+  ].filter(Boolean);
 
   // Create plan
   const createFn = async (payload) => {
@@ -178,6 +194,8 @@ const PlanForm = () => {
   // Prefill on edit
   const fetcher = async (id) => {
     const { plan } = await planApi.getPlan(id);
+
+    setShowToken(plan.planType === "DC");
 
     return {
       ...defaultValues,

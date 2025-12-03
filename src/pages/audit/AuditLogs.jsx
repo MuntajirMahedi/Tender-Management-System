@@ -5,6 +5,7 @@ import { formatDateTime } from "../../utils/formatters";
 import RequirePermission from "../../components/RequirePermission";
 import useDebounce from "../../hooks/useDebounce";
 import { toast } from "react-toastify";
+import PageHeader from "../../components/PageHeader";
 
 const columns = [
   {
@@ -130,10 +131,11 @@ const AuditLogs = () => {
         {/* HEADER */}
         <div className="d-flex justify-content-between align-items-center mb-3">
           <div>
-            <h4 className="mb-0">Audit Logs</h4>
+            <PageHeader title="Audit Logs" subtitle="Track every activity performed in the platform" />
+            {/* <h4 className="mb-0">Audit Logs</h4>
             <small className="text-muted">
               Track every activity performed in the platform
-            </small>
+            </small> */}
           </div>
 
           <div style={{ minWidth: 260 }}>

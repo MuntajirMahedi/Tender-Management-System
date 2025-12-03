@@ -10,6 +10,7 @@ import { formatCurrency, formatDate } from "../../utils/formatters";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
 import useDebounce from "../../hooks/useDebounce";
+import PageHeader from "../../components/PageHeader";
 
 const columns = [
   {
@@ -65,31 +66,44 @@ const PaymentList = () => {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // modal delete state
+  // Modal + delete state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteName, setDeleteName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // filters & search
+  // Bulk delete flag
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
+
+  // MULTI SELECT
+  const [selected, setSelected] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
+
+  // Filters
   const [modeFilter, setModeFilter] = useState("");
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
 
-  // pagination
+  // Pagination
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
+  // Load data
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
+
         const res = await paymentApi.getPayments();
 
         const list =
-          Array.isArray(res?.payments) ? res.payments :
-          Array.isArray(res?.data) ? res.data :
-          Array.isArray(res) ? res : [];
+          Array.isArray(res?.payments)
+            ? res.payments
+            : Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res)
+            ? res
+            : [];
 
         setPayments(list);
       } catch (err) {
@@ -103,7 +117,7 @@ const PaymentList = () => {
     load();
   }, []);
 
-  // filter + search
+  // Search + filter
   const filtered = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
 
@@ -112,21 +126,16 @@ const PaymentList = () => {
 
       if (!term) return true;
 
-      const clientName = (p.client?.name || "").toLowerCase();
-      const planName = (p.plan?.planName || "").toLowerCase();
-      const mode = (p.paymentMode || "").toLowerCase();
-      const amount = String(p.amount || "").toLowerCase();
-
       return (
-        clientName.includes(term) ||
-        planName.includes(term) ||
-        mode.includes(term) ||
-        amount.includes(term)
+        (p.client?.name || "").toLowerCase().includes(term) ||
+        (p.plan?.planName || "").toLowerCase().includes(term) ||
+        (p.paymentMode || "").toLowerCase().includes(term) ||
+        String(p.amount || "").includes(term)
       );
     });
   }, [payments, modeFilter, debouncedSearch]);
 
-  // pagination values
+  // Pagination compute
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -135,56 +144,113 @@ const PaymentList = () => {
   const endIndex = Math.min(startIndex + pageSize, total);
   const paginatedPayments = filtered.slice(startIndex, endIndex);
 
-  // show modal
+  /* -------------------------
+      SINGLE DELETE
+  ------------------------- */
   const confirmDelete = (id, name) => {
+    setIsBulkDelete(false);
     setDeleteId(id);
     setDeleteName(name);
     setShowDeleteModal(true);
   };
 
-  // actual delete
+  /* -------------------------
+      BULK DELETE OPEN MODAL
+  ------------------------- */
+  const openBulkDelete = () => {
+    if (selected.length === 0) {
+      toast.info("No payments selected");
+      return;
+    }
+
+    setIsBulkDelete(true);
+    setDeleteName(`${selected.length} payments`);
+    setShowDeleteModal(true);
+  };
+
+  /* -------------------------
+      DELETE HANDLER
+  ------------------------- */
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
 
-      await paymentApi.deletePayment(deleteId);
+      if (isBulkDelete) {
+        await Promise.all(selected.map((id) => paymentApi.deletePayment(id)));
 
-      toast.success("Payment deleted successfully");
+        setPayments((prev) =>
+          prev.filter((p) => !selected.includes(p._id || p.id))
+        );
 
-      setPayments((prev) =>
-        prev.filter((p) => (p._id || p.id) !== deleteId)
-      );
+        toast.success("Selected payments deleted");
+
+        setSelected([]);
+        setSelectAll(false);
+      } else {
+        await paymentApi.deletePayment(deleteId);
+
+        toast.success(`Payment for "${deleteName}" deleted`);
+
+        setPayments((prev) =>
+          prev.filter((p) => (p._id || p.id) !== deleteId)
+        );
+      }
 
       setShowDeleteModal(false);
     } catch (err) {
       toast.error("Failed to delete payment");
     } finally {
       setIsDeleting(false);
+      setIsBulkDelete(false);
     }
+  };
+
+  /* -------------------------
+      MULTI SELECT
+  ------------------------- */
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectAll) {
+      setSelected([]);
+    } else {
+      const ids = paginatedPayments.map((p) => p._id || p.id);
+      setSelected(ids);
+    }
+    setSelectAll(!selectAll);
   };
 
   return (
     <RequirePermission permission="payment:view">
       <div>
-        {/* ---------- HEADER ---------- */}
+        {/* HEADER */}
         <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h4 className="mb-0">Payments</h4>
-            <small className="text-muted">Track incoming payments</small>
-          </div>
+          <PageHeader title="Payments" subtitle="Track incoming payments" />
 
-          {canCreate && (
-            <Link to="/payments/new" className="btn btn-primary">
-              <i className="bi bi-plus-lg me-2"></i>
-              New Payment
-            </Link>
-          )}
+          <div className="d-flex gap-2">
+            {selected.length > 0 && (
+              <button className="btn btn-danger" onClick={openBulkDelete}>
+                <i className="bi bi-trash me-1"></i>
+                Delete Selected ({selected.length})
+              </button>
+            )}
+
+            {canCreate && (
+              <Link to="/payments/new" className="btn btn-primary">
+                <i className="bi bi-plus-lg me-2"></i>
+                New Payment
+              </Link>
+            )}
+          </div>
         </div>
 
-        {/* ---------- FILTERS ---------- */}
+        {/* FILTERS */}
         <div className="card mb-3">
           <div className="card-body row g-3 align-items-end">
-            {/* Mode */}
             <div className="col-sm-6 col-md-3">
               <label className="form-label small text-muted">Mode</label>
               <select
@@ -204,7 +270,6 @@ const PaymentList = () => {
               </select>
             </div>
 
-            {/* Search */}
             <div className="col-sm-6 col-md-3">
               <label className="form-label small text-muted">Search</label>
               <input
@@ -220,102 +285,124 @@ const PaymentList = () => {
           </div>
         </div>
 
-        {/* ---------- TABLE ---------- */}
+        {/* TABLE */}
         <div className="card shadow-sm">
-          <div className="card-body p-0">
-            {loading ? (
-              <p className="p-3">Loading...</p>
-            ) : filtered.length === 0 ? (
-              <p className="p-3 text-muted">No payments found.</p>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-striped table-hover mb-0 align-middle">
-                  <thead className="table-light">
-                    <tr>
-                      {columns.map((col) => (
-                        <th
-                          key={col.key}
-                          className={col.align === "center" ? "text-center" : ""}
-                        >
-                          {col.label}
-                        </th>
-                      ))}
-                      <th width="160">Actions</th>
-                    </tr>
-                  </thead>
+          <div className="table-responsive">
+            <table className="table table-striped table-hover mb-0 align-middle">
+              <thead className="table-light">
+                <tr>
+                  <th width="50">
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={handleSelectAll}
+                    />
+                  </th>
 
-                  <tbody>
-                    {paginatedPayments.map((row) => {
-                      const rowId = row._id || row.id;
+                  {columns.map((col) => (
+                    <th
+                      key={col.key}
+                      className={col.align === "center" ? "text-center" : ""}
+                    >
+                      {col.label}
+                    </th>
+                  ))}
 
-                      return (
-                        <tr key={rowId}>
-                          {columns.map((col) => {
-                            let rawValue =
-                              col.dataIndex === "client"
-                                ? row.client
-                                : col.dataIndex === "plan"
-                                ? row.plan
-                                : col.dataIndex === "planType"
-                                ? row.plan?.planType
-                                : row[col.dataIndex];
+                  <th width="150">Actions</th>
+                </tr>
+              </thead>
 
-                            return (
-                              <td
-                                key={col.key}
-                                className={col.align === "center" ? "text-center" : ""}
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3">
+                      Loading...
+                    </td>
+                  </tr>
+                ) : paginatedPayments.length === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3 text-muted">
+                      No payments found.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedPayments.map((row) => {
+                    const rowId = row._id || row.id;
+
+                    return (
+                      <tr key={rowId}>
+                        {/* Row checkbox */}
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(rowId)}
+                            onChange={() => toggleSelect(rowId)}
+                          />
+                        </td>
+
+                        {/* Table columns */}
+                        {columns.map((col) => {
+                          const rawValue =
+                            col.dataIndex === "client"
+                              ? row.client
+                              : col.dataIndex === "plan"
+                              ? row.plan
+                              : col.dataIndex === "planType"
+                              ? row.plan?.planType
+                              : row[col.dataIndex];
+
+                          return (
+                            <td
+                              key={col.key}
+                              className={col.align === "center" ? "text-center" : ""}
+                            >
+                              {col.render ? col.render(rawValue, row) : rawValue}
+                            </td>
+                          );
+                        })}
+
+                        {/* ACTIONS */}
+                        <td>
+                          <div className="btn-group btn-group-sm">
+                            {canView && (
+                              <Link
+                                to={`/payments/${rowId}`}
+                                className="btn btn-outline-secondary"
                               >
-                                {col.render
-                                  ? col.render(rawValue, row)
-                                  : rawValue}
-                              </td>
-                            );
-                          })}
-
-                          {/* actions */}
-                          <td>
-                            <div className="btn-group btn-group-sm">
-                              {canView && (
-                                <Link
-                                  to={`/payments/${rowId}`}
-                                  className="btn btn-outline-secondary"
-                                >
-                                  View
-                                </Link>
-                              )}
-                              {canUpdate && (
-                                <Link
-                                  to={`/payments/${rowId}/edit`}
-                                  className="btn btn-outline-primary"
-                                >
-                                  Edit
-                                </Link>
-                              )}
-                              {canDelete && (
-                                <button
-                                  className="btn btn-outline-danger"
-                                  onClick={() =>
-                                    confirmDelete(rowId, row.client?.name)
-                                  }
-                                >
-                                  Delete
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                                View
+                              </Link>
+                            )}
+                            {canUpdate && (
+                              <Link
+                                to={`/payments/${rowId}/edit`}
+                                className="btn btn-outline-primary"
+                              >
+                                Edit
+                              </Link>
+                            )}
+                            {canDelete && (
+                              <button
+                                className="btn btn-outline-danger"
+                                onClick={() =>
+                                  confirmDelete(rowId, row.client?.name)
+                                }
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
 
-          {/* ---------- PAGINATION ---------- */}
+          {/* PAGINATION */}
           {!loading && filtered.length > 0 && (
             <div className="card-footer d-flex justify-content-between align-items-center">
-
               <div className="d-flex align-items-center gap-2">
                 <span className="text-muted small">Show</span>
 
@@ -329,7 +416,9 @@ const PaymentList = () => {
                   }}
                 >
                   {[5, 10, 20, 50, 100].map((n) => (
-                    <option key={n} value={n}>{n}</option>
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
                   ))}
                 </select>
 
@@ -359,18 +448,17 @@ const PaymentList = () => {
                   Next
                 </button>
               </div>
-
             </div>
           )}
         </div>
 
-        {/* ---------- DELETE CONFIRM MODAL ---------- */}
+        {/* DELETE MODAL */}
         {showDeleteModal && (
           <>
             <div className="modal fade show d-block">
               <div className="modal-dialog modal-dialog-centered">
                 <div className="modal-content">
-
+                  
                   <div className="modal-header">
                     <h5 className="modal-title text-danger">
                       <i className="bi bi-exclamation-triangle-fill me-2"></i>
@@ -378,14 +466,14 @@ const PaymentList = () => {
                     </h5>
                     <button
                       className="btn-close"
-                      onClick={() => !isDeleting && setShowDeleteModal(false)}
                       disabled={isDeleting}
+                      onClick={() => setShowDeleteModal(false)}
                     ></button>
                   </div>
 
                   <div className="modal-body">
-                    Are you sure you want to delete payment of  
-                    <strong> {deleteName || "this client"} </strong>?
+                    Are you sure you want to delete{" "}
+                    <strong>{deleteName}</strong>?
                   </div>
 
                   <div className="modal-footer">
@@ -413,6 +501,7 @@ const PaymentList = () => {
             <div className="modal-backdrop fade show"></div>
           </>
         )}
+
       </div>
     </RequirePermission>
   );

@@ -82,7 +82,7 @@ const PaymentForm = () => {
       type: "select",
       options: planOptions,
     },
-    { name: "amount", label: "Amount *", type: "number" },
+    { name: "amount", label: "Amount *", type: "number", min: 0 },
 
     { name: "paymentDate", label: "Payment Date *", type: "date" },
 

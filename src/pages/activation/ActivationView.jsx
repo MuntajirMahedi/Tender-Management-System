@@ -126,14 +126,14 @@ const ActivationView = () => {
               <InfoItem label="Start Date" value={formatDate(task.startDate)} />
               <InfoItem label="Due Date" value={formatDate(task.dueDate)} />
 
-              <div className="mt-3">
+              {/* <div className="mt-3">
                 <div className="text-muted small">Progress</div>
                 <div className="fw-semibold">
                   {task.activationProgress !== undefined
                     ? `${task.activationProgress}%`
                     : "—"}
                 </div>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>

@@ -13,6 +13,7 @@ import { formatDate } from "../../utils/formatters";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
 import useDebounce from "../../hooks/useDebounce";
+import PageHeader from "../../components/PageHeader";
 
 /* -----------------------------------
       TABLE COLUMNS
@@ -79,25 +80,30 @@ const InquiryList = () => {
   const [inquiries, setInquiries] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // modal delete state
+  // Single/Bulk modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteName, setDeleteName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
 
-  // filters
+  // MULTI DELETE
+  const [selected, setSelected] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
+
+  // Filters
   const [statusFilter, setStatusFilter] = useState("");
   const [interestFilter, setInterestFilter] = useState("");
 
-  // search
+  // Search
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
 
-  // pagination
+  // Pagination
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // load
+  // Load inquiries
   useEffect(() => {
     const load = async () => {
       try {
@@ -125,7 +131,7 @@ const InquiryList = () => {
     load();
   }, []);
 
-  // Combined Search + Filters
+  // Filter + Search
   const filtered = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
 
@@ -151,7 +157,7 @@ const InquiryList = () => {
     });
   }, [inquiries, statusFilter, interestFilter, debouncedSearch]);
 
-  // pagination
+  // Pagination calculation
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -161,35 +167,83 @@ const InquiryList = () => {
   const paginatedInquiries = filtered.slice(startIndex, endIndex);
 
   /* -------------------------
-      OPEN DELETE MODAL
+      SINGLE DELETE
   ------------------------- */
   const confirmDelete = (id, name) => {
+    setIsBulkDelete(false);
     setDeleteId(id);
     setDeleteName(name);
     setShowDeleteModal(true);
   };
 
   /* -------------------------
-      ACTUAL DELETE
+      MULTI DELETE (Open Modal)
+  ------------------------- */
+  const deleteSelected = () => {
+    if (selected.length === 0) {
+      toast.info("No inquiries selected");
+      return;
+    }
+
+    setIsBulkDelete(true);
+    setDeleteName(`${selected.length} inquiries`);
+    setShowDeleteModal(true);
+  };
+
+  /* -------------------------
+      DELETE HANDLE (Both modes)
   ------------------------- */
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
 
-      await inquiryApi.deleteInquiry(deleteId);
+      if (isBulkDelete) {
+        await Promise.all(selected.map((id) => inquiryApi.deleteInquiry(id)));
 
-      toast.success("Inquiry deleted successfully");
+        setInquiries((prev) =>
+          prev.filter((inq) => !selected.includes(inq._id || inq.id))
+        );
 
-      setInquiries((prev) =>
-        prev.filter((inq) => (inq._id || inq.id) !== deleteId)
-      );
+        toast.success("Selected inquiries deleted");
+
+        setSelected([]);
+        setSelectAll(false);
+        setIsBulkDelete(false);
+      } else {
+        await inquiryApi.deleteInquiry(deleteId);
+
+        toast.success("Inquiry deleted successfully");
+
+        setInquiries((prev) =>
+          prev.filter((inq) => (inq._id || inq.id) !== deleteId)
+        );
+      }
 
       setShowDeleteModal(false);
     } catch (err) {
-      toast.error("Failed to delete inquiry");
+      toast.error("Delete failed");
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  /* -------------------------
+     MULTI SELECT HANDLERS
+  ------------------------- */
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectAll) {
+      setSelected([]);
+    } else {
+      const ids = paginatedInquiries.map((inq) => inq._id || inq.id);
+      setSelected(ids);
+    }
+    setSelectAll(!selectAll);
   };
 
   return (
@@ -197,25 +251,30 @@ const InquiryList = () => {
       <div>
         {/* HEADER */}
         <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h4 className="mb-0">Inquiries</h4>
-            <small className="text-muted">Manage all incoming leads</small>
-          </div>
+          <PageHeader title="Inquiries" subtitle="Manage all incoming leads" />
 
-          {canCreate && (
-            <Link to="/inquiries/new" className="btn btn-primary">
-              <i className="bi bi-plus-lg me-2" /> New Inquiry
-            </Link>
-          )}
+          <div className="d-flex gap-2">
+            {selected.length > 0 && (
+              <button className="btn btn-danger" onClick={deleteSelected}>
+                <i className="bi bi-trash me-1"></i>
+                Delete Selected ({selected.length})
+              </button>
+            )}
+
+            {canCreate && (
+              <Link to="/inquiries/new" className="btn btn-primary">
+                <i className="bi bi-plus-lg me-2" /> New Inquiry
+              </Link>
+            )}
+          </div>
         </div>
 
-        {/* FILTERS + SEARCH */}
+        {/* FILTER + SEARCH */}
         <div className="card mb-3">
           <div className="card-body row g-3 align-items-end">
 
-            {/* Status */}
             <div className="col-sm-4 col-md-3">
-              <label className="form-label small text-muted">Status</label>
+              <label className="form-label small">Status</label>
               <select
                 className="form-select form-select-sm"
                 value={statusFilter}
@@ -226,14 +285,15 @@ const InquiryList = () => {
               >
                 <option value="">All</option>
                 {INQUIRY_STATUSES.map((st) => (
-                  <option key={st} value={st}>{st}</option>
+                  <option key={st} value={st}>
+                    {st}
+                  </option>
                 ))}
               </select>
             </div>
 
-            {/* Interest */}
             <div className="col-sm-4 col-md-3">
-              <label className="form-label small text-muted">Interest Level</label>
+              <label className="form-label small">Interest</label>
               <select
                 className="form-select form-select-sm"
                 value={interestFilter}
@@ -244,17 +304,18 @@ const InquiryList = () => {
               >
                 <option value="">All</option>
                 {INQUIRY_INTEREST_LEVELS.map((lvl) => (
-                  <option key={lvl} value={lvl}>{lvl}</option>
+                  <option key={lvl} value={lvl}>
+                    {lvl}
+                  </option>
                 ))}
               </select>
             </div>
 
-            {/* Search */}
             <div className="col-sm-8 col-md-4">
-              <label className="form-label small text-muted">Search</label>
+              <label className="form-label small">Search</label>
               <input
                 className="form-control form-control-sm"
-                placeholder="Search name, company, mobile, email, assigned"
+                placeholder="Search name, company, mobile, email"
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -268,107 +329,126 @@ const InquiryList = () => {
 
         {/* TABLE */}
         <div className="card shadow-sm">
-          <div className="card-body p-0">
+          <div className="table-responsive">
+            <table className="table table-striped table-hover mb-0 align-middle">
+              <thead className="table-light">
+                <tr>
+                  <th width="50">
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={handleSelectAll}
+                    />
+                  </th>
 
-            {loading ? (
-              <p className="p-3 mb-0">Loading...</p>
-            ) : filtered.length === 0 ? (
-              <p className="p-3 mb-0 text-muted">No inquiries found.</p>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-striped table-hover mb-0 align-middle">
-                  <thead className="table-light">
-                    <tr>
-                      {columns.map((col) => (
-                        <th key={col.key}>{col.label}</th>
-                      ))}
-                      <th width="160">Actions</th>
-                    </tr>
-                  </thead>
+                  {columns.map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
 
-                  <tbody>
-                    {paginatedInquiries.map((row) => {
-                      const rowId = row._id || row.id;
+                  <th width="150">Actions</th>
+                </tr>
+              </thead>
 
-                      return (
-                        <tr key={rowId}>
-                          {columns.map((col) => {
-                            const rawValue =
-                              col.dataIndex === "assignedTo"
-                                ? row.assignedTo
-                                : row[col.dataIndex];
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3">
+                      Loading...
+                    </td>
+                  </tr>
+                ) : paginatedInquiries.length === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3 text-muted">
+                      No inquiries found.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedInquiries.map((row) => {
+                    const rowId = row._id || row.id;
 
-                            return (
-                              <td key={col.key}>
-                                {col.render
-                                  ? col.render(rawValue, row)
-                                  : rawValue}
-                              </td>
-                            );
-                          })}
+                    return (
+                      <tr key={rowId}>
+                        {/* Checkbox */}
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(rowId)}
+                            onChange={() => toggleSelect(rowId)}
+                          />
+                        </td>
 
-                          {/* ACTIONS */}
-                          <td>
-                            <div className="btn-group btn-group-sm">
-                              {canView && (
-                                <Link
-                                  to={`/inquiries/${rowId}`}
-                                  className="btn btn-outline-secondary"
-                                >
-                                  View
-                                </Link>
-                              )}
+                        {columns.map((col) => {
+                          const rawValue =
+                            col.dataIndex === "assignedTo"
+                              ? row.assignedTo
+                              : row[col.dataIndex];
 
-                              {canUpdate && (
-                                <Link
-                                  to={`/inquiries/${rowId}/edit`}
-                                  className="btn btn-outline-primary"
-                                >
-                                  Edit
-                                </Link>
-                              )}
+                          return (
+                            <td key={col.key}>
+                              {col.render
+                                ? col.render(rawValue, row)
+                                : rawValue}
+                            </td>
+                          );
+                        })}
 
-                              {canDelete && (
-                                <button
-                                  className="btn btn-outline-danger"
-                                  onClick={() =>
-                                    confirmDelete(rowId, row.name)
-                                  }
-                                >
-                                  Delete
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
+                        {/* ACTION BUTTONS */}
+                        <td>
+                          <div className="btn-group btn-group-sm">
+                            {canView && (
+                              <Link
+                                to={`/inquiries/${rowId}`}
+                                className="btn btn-outline-secondary"
+                              >
+                                View
+                              </Link>
+                            )}
 
-                </table>
-              </div>
-            )}
+                            {canUpdate && (
+                              <Link
+                                to={`/inquiries/${rowId}/edit`}
+                                className="btn btn-outline-primary"
+                              >
+                                Edit
+                              </Link>
+                            )}
 
+                            {canDelete && (
+                              <button
+                                className="btn btn-outline-danger"
+                                onClick={() => confirmDelete(rowId, row.name)}
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
 
           {/* PAGINATION */}
           {!loading && filtered.length > 0 && (
             <div className="card-footer d-flex justify-content-between align-items-center">
-
-              {/* LEFT */}
               <div className="d-flex align-items-center gap-2">
                 <span className="text-muted small">Show</span>
                 <select
                   className="form-select form-select-sm"
-                  style={{ width: "auto" }}
+                  style={{ width: 80 }}
                   value={pageSize}
                   onChange={(e) => {
                     setPageSize(Number(e.target.value));
                     setPage(1);
                   }}
                 >
-                  {[5, 10, 20, 50, 100].map((s) => (
-                    <option key={s} value={s}>{s}</option>
+                  {[5, 10, 20, 50, 100].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
                   ))}
                 </select>
 
@@ -377,7 +457,6 @@ const InquiryList = () => {
                 </span>
               </div>
 
-              {/* RIGHT */}
               <div className="d-flex align-items-center gap-2">
                 <button
                   className="btn btn-sm btn-outline-secondary"
@@ -399,10 +478,8 @@ const InquiryList = () => {
                   Next
                 </button>
               </div>
-
             </div>
           )}
-
         </div>
 
         {/* ---------- DELETE CONFIRM MODAL ---------- */}
@@ -425,8 +502,8 @@ const InquiryList = () => {
                   </div>
 
                   <div className="modal-body">
-                    Are you sure you want to delete inquiry  
-                    <strong> {deleteName} </strong>?
+                    Are you sure you want to delete{" "}
+                    <strong>{deleteName}</strong>?
                   </div>
 
                   <div className="modal-footer">
@@ -454,7 +531,6 @@ const InquiryList = () => {
             <div className="modal-backdrop fade show"></div>
           </>
         )}
-
       </div>
     </RequirePermission>
   );

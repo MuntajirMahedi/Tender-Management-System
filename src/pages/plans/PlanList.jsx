@@ -14,6 +14,7 @@ import { formatCurrency } from "../../utils/formatters";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
 import useDebounce from "../../hooks/useDebounce";
+import PageHeader from "../../components/PageHeader";
 
 const columns = [
   {
@@ -31,7 +32,7 @@ const columns = [
     key: "client",
     label: "Client",
     dataIndex: "client",
-    render: (value) => value?.name || "—"
+    render: (v) => v?.name || "—"
   },
   {
     key: "planType",
@@ -74,22 +75,27 @@ const PlanList = () => {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // MODAL STATES
+  // DELETE MODAL STATES
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteName, setDeleteName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
 
-  // filters
+  // MULTI SELECT
+  const [selected, setSelected] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
+
+  // FILTERS
   const [planTypeFilter, setPlanTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
 
-  // search
+  // SEARCH
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
 
-  // pagination
+  // PAGINATION
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -97,6 +103,7 @@ const PlanList = () => {
     const load = async () => {
       try {
         setLoading(true);
+
         const res = await planApi.getPlans();
 
         const list =
@@ -120,9 +127,9 @@ const PlanList = () => {
     load();
   }, []);
 
-  /** FILTER + SEARCH */
+  // FILTER + SEARCH
   const filtered = useMemo(() => {
-    const term = debouncedSearch.trim().toLowerCase();
+    const t = debouncedSearch.trim().toLowerCase();
 
     return plans.filter((p) => {
       if (planTypeFilter && p.planType !== planTypeFilter) return false;
@@ -130,16 +137,16 @@ const PlanList = () => {
       if (paymentStatusFilter && p.paymentStatus !== paymentStatusFilter)
         return false;
 
-      if (!term) return true;
+      if (!t) return true;
 
       const name = (p.planName || "").toLowerCase();
       const code = (p.planCode || "").toLowerCase();
-      const clientName = (p.client?.name || "").toLowerCase();
+      const client = (p.client?.name || "").toLowerCase();
 
       return (
-        name.includes(term) ||
-        code.includes(term) ||
-        clientName.includes(term)
+        name.includes(t) ||
+        code.includes(t) ||
+        client.includes(t)
       );
     });
   }, [plans, planTypeFilter, statusFilter, paymentStatusFilter, debouncedSearch]);
@@ -152,32 +159,84 @@ const PlanList = () => {
   const endIndex = Math.min(startIndex + pageSize, total);
   const paginatedPlans = filtered.slice(startIndex, endIndex);
 
-  /** OPEN MODAL */
+  /* -------------------------
+        SINGLE DELETE
+  ------------------------- */
   const confirmDelete = (id, name) => {
+    setIsBulkDelete(false);
     setDeleteId(id);
     setDeleteName(name);
     setShowDeleteModal(true);
   };
 
-  /** DELETE PLAN */
+  /* -------------------------
+        BULK DELETE OPEN MODAL
+  ------------------------- */
+  const openBulkDelete = () => {
+    if (selected.length === 0) {
+      toast.info("No plans selected");
+      return;
+    }
+
+    setIsBulkDelete(true);
+    setDeleteName(`${selected.length} plans`);
+    setShowDeleteModal(true);
+  };
+
+  /* -------------------------
+        DELETE HANDLER
+  ------------------------- */
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
 
-      await planApi.deletePlan(deleteId);
+      if (isBulkDelete) {
+        await Promise.all(selected.map((id) => planApi.deletePlan(id)));
 
-      toast.success(`Plan "${deleteName}" deleted`);
+        setPlans((prev) =>
+          prev.filter((p) => !selected.includes(p._id || p.id))
+        );
 
-      setPlans((prev) =>
-        prev.filter((p) => (p._id || p.id) !== deleteId)
-      );
+        toast.success("Selected plans deleted");
+
+        setSelected([]);
+        setSelectAll(false);
+        setIsBulkDelete(false);
+      } else {
+        await planApi.deletePlan(deleteId);
+
+        toast.success(`Plan "${deleteName}" deleted`);
+
+        setPlans((prev) =>
+          prev.filter((p) => (p._id || p.id) !== deleteId)
+        );
+      }
 
       setShowDeleteModal(false);
     } catch (err) {
-      toast.error("Failed to delete plan");
+      toast.error("Delete failed");
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  /* -------------------------
+        MULTI SELECT LOGIC
+  ------------------------- */
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectAll) {
+      setSelected([]);
+    } else {
+      const ids = paginatedPlans.map((p) => p._id || p.id);
+      setSelected(ids);
+    }
+    setSelectAll(!selectAll);
   };
 
   return (
@@ -185,17 +244,24 @@ const PlanList = () => {
       <div>
         {/* HEADER */}
         <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h4 className="mb-0">Plans</h4>
-            <small className="text-muted">Manage all plans & subscriptions</small>
-          </div>
+          <PageHeader title="Plans" subtitle="Manage all plans & subscriptions" />
 
-          {canCreate && (
-            <Link to="/plans/new" className="btn btn-primary">
-              <i className="bi bi-plus-lg me-2"></i>
-              New Plan
-            </Link>
-          )}
+          <div className="d-flex gap-2">
+            {/* BULK DELETE BTN */}
+            {selected.length > 0 && (
+              <button className="btn btn-danger" onClick={openBulkDelete}>
+                <i className="bi bi-trash me-1"></i>
+                Delete Selected ({selected.length})
+              </button>
+            )}
+
+            {canCreate && (
+              <Link to="/plans/new" className="btn btn-primary">
+                <i className="bi bi-plus-lg me-2"></i>
+                New Plan
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* FILTERS */}
@@ -235,9 +301,7 @@ const PlanList = () => {
               >
                 <option value="">All</option>
                 {PLAN_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
+                  <option key={s} value={s}>{s}</option>
                 ))}
               </select>
             </div>
@@ -255,19 +319,17 @@ const PlanList = () => {
               >
                 <option value="">All</option>
                 {PAYMENT_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
+                  <option key={s} value={s}>{s}</option>
                 ))}
               </select>
             </div>
 
-            {/* SEARCH */}
+            {/* Search */}
             <div className="col-sm-6 col-md-3">
               <label className="form-label small">Search</label>
               <input
                 className="form-control form-control-sm"
-                placeholder="Search plan / code / client"
+                placeholder="Search plan, code, client"
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -281,89 +343,103 @@ const PlanList = () => {
 
         {/* TABLE */}
         <div className="card shadow-sm">
-          <div className="card-body p-0">
-            {loading ? (
-              <p className="p-3">Loading...</p>
-            ) : filtered.length === 0 ? (
-              <p className="p-3 text-muted">No plans found.</p>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-striped table-hover mb-0 align-middle">
-                  <thead className="table-light">
-                    <tr>
-                      {columns.map((col) => (
-                        <th
-                          key={col.key}
-                          className={col.align === "center" ? "text-center" : ""}
-                        >
-                          {col.label}
-                        </th>
-                      ))}
-                      <th width="150">Actions</th>
-                    </tr>
-                  </thead>
+          <div className="table-responsive">
+            <table className="table table-striped table-hover mb-0 align-middle">
+              <thead className="table-light">
+                <tr>
+                  <th width="50">
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={handleSelectAll}
+                    />
+                  </th>
 
-                  <tbody>
-                    {paginatedPlans.map((row) => {
-                      const rowId = row._id || row.id;
+                  {columns.map((col) => (
+                    <th
+                      key={col.key}
+                      className={col.align === "center" ? "text-center" : ""}
+                    >
+                      {col.label}
+                    </th>
+                  ))}
 
-                      return (
-                        <tr key={rowId}>
-                          {columns.map((col) => {
-                            let rawValue =
-                              col.dataIndex === "client"
-                                ? row.client
-                                : row[col.dataIndex];
+                  <th width="150">Actions</th>
+                </tr>
+              </thead>
 
-                            return (
-                              <td
-                                key={col.key}
-                                className={col.align === "center" ? "text-center" : ""}
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={columns.length + 2} className="p-3">Loading...</td></tr>
+                ) : paginatedPlans.length === 0 ? (
+                  <tr><td colSpan={columns.length + 2} className="p-3 text-muted">No plans found.</td></tr>
+                ) : (
+                  paginatedPlans.map((row) => {
+                    const rowId = row._id || row.id;
+
+                    return (
+                      <tr key={rowId}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(rowId)}
+                            onChange={() => toggleSelect(rowId)}
+                          />
+                        </td>
+
+                        {columns.map((col) => {
+                          const raw =
+                            col.dataIndex === "client"
+                              ? row.client
+                              : row[col.dataIndex];
+
+                          return (
+                            <td
+                              key={col.key}
+                              className={col.align === "center" ? "text-center" : ""}
+                            >
+                              {col.render ? col.render(raw, row) : raw}
+                            </td>
+                          );
+                        })}
+
+                        <td>
+                          <div className="btn-group btn-group-sm">
+                            {canView && (
+                              <Link
+                                to={`/plans/${rowId}`}
+                                className="btn btn-outline-secondary"
                               >
-                                {col.render
-                                  ? col.render(rawValue, row)
-                                  : rawValue}
-                              </td>
-                            );
-                          })}
+                                View
+                              </Link>
+                            )}
 
-                          {/* ACTION BUTTONS */}
-                          <td>
-                            <div className="btn-group btn-group-sm">
-                              {canView && (
-                                <Link
-                                  to={`/plans/${rowId}`}
-                                  className="btn btn-outline-secondary"
-                                >
-                                  View
-                                </Link>
-                              )}
-                              {canUpdate && (
-                                <Link
-                                  to={`/plans/${rowId}/edit`}
-                                  className="btn btn-outline-primary"
-                                >
-                                  Edit
-                                </Link>
-                              )}
-                              {canDelete && (
-                                <button
-                                  className="btn btn-outline-danger"
-                                  onClick={() => confirmDelete(rowId, row.planName)}
-                                >
-                                  Delete
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
+                            {canUpdate && (
+                              <Link
+                                to={`/plans/${rowId}/edit`}
+                                className="btn btn-outline-primary"
+                              >
+                                Edit
+                              </Link>
+                            )}
 
-                </table>
-              </div>
-            )}
+                            {canDelete && (
+                              <button
+                                className="btn btn-outline-danger"
+                                onClick={() => confirmDelete(rowId, row.planName)}
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+
+            </table>
           </div>
 
           {/* PAGINATION */}
@@ -419,7 +495,7 @@ const PlanList = () => {
 
         </div>
 
-        {/* ---------- DELETE CONFIRM MODAL ---------- */}
+        {/* DELETE MODAL */}
         {showDeleteModal && (
           <>
             <div className="modal fade show d-block">
@@ -431,6 +507,7 @@ const PlanList = () => {
                       <i className="bi bi-exclamation-triangle-fill me-2"></i>
                       Confirm Delete
                     </h5>
+
                     <button
                       className="btn-close"
                       disabled={isDeleting}
@@ -439,8 +516,8 @@ const PlanList = () => {
                   </div>
 
                   <div className="modal-body">
-                    Are you sure you want to delete plan  
-                    <strong> {deleteName} </strong>?
+                    Are you sure you want to delete{" "}
+                    <strong>{deleteName}</strong>?
                   </div>
 
                   <div className="modal-footer">

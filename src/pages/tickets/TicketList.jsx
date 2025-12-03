@@ -1,4 +1,3 @@
-// src/pages/tickets/TicketList.jsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -11,6 +10,7 @@ import { formatDate } from "../../utils/formatters";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
 import useDebounce from "../../hooks/useDebounce";
+import PageHeader from "../../components/PageHeader";
 
 const columns = [
   { key: "subject", label: "Subject", dataIndex: "subject" },
@@ -74,11 +74,16 @@ const TicketList = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // DELETE MODAL STATE
+  // DELETE MODAL
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteSubject, setDeleteSubject] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
+
+  // MULTI SELECT
+  const [selected, setSelected] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -107,7 +112,7 @@ const TicketList = () => {
     load();
   }, []);
 
-  // Filter + search
+  // FILTER + SEARCH
   const filtered = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
 
@@ -136,30 +141,84 @@ const TicketList = () => {
 
   const paginatedTickets = filtered.slice(startIndex, endIndex);
 
-  // OPEN DELETE MODAL
+  /* ----------------------------------
+          SINGLE DELETE
+  ---------------------------------- */
   const confirmDelete = (id, subject) => {
+    setIsBulkDelete(false);
     setDeleteId(id);
     setDeleteSubject(subject);
     setShowDeleteModal(true);
   };
 
-  // DELETE ACTION
+  /* ----------------------------------
+          OPEN BULK DELETE
+  ---------------------------------- */
+  const openBulkDelete = () => {
+    if (selected.length === 0) {
+      toast.info("No tickets selected");
+      return;
+    }
+
+    setIsBulkDelete(true);
+    setDeleteSubject(`${selected.length} tickets`);
+    setShowDeleteModal(true);
+  };
+
+  /* ----------------------------------
+           DELETE ACTION
+  ---------------------------------- */
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
 
-      await ticketApi.deleteTicket(deleteId);
+      if (isBulkDelete) {
+        await Promise.all(selected.map((id) => ticketApi.deleteTicket(id)));
 
-      toast.success(`Ticket "${deleteSubject}" deleted`);
+        setTickets((prev) =>
+          prev.filter((t) => !selected.includes(t._id || t.id))
+        );
 
-      setTickets((prev) => prev.filter((t) => (t._id || t.id) !== deleteId));
+        toast.success("Selected tickets deleted");
+
+        setSelected([]);
+        setSelectAll(false);
+        setIsBulkDelete(false);
+      } else {
+        await ticketApi.deleteTicket(deleteId);
+
+        toast.success(`Ticket "${deleteSubject}" deleted`);
+
+        setTickets((prev) =>
+          prev.filter((t) => (t._id || t.id) !== deleteId)
+        );
+      }
 
       setShowDeleteModal(false);
     } catch (err) {
-      toast.error("Failed to delete ticket");
+      toast.error("Delete failed");
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  /* ----------------------------------
+         MULTI SELECT HANDLERS
+  ---------------------------------- */
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectAll) {
+      setSelected([]);
+    } else {
+      const ids = paginatedTickets.map((t) => t._id || t.id);
+      setSelected(ids);
+    }
+    setSelectAll(!selectAll);
   };
 
   return (
@@ -167,19 +226,26 @@ const TicketList = () => {
       <div>
         {/* HEADER */}
         <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h4 className="mb-0">Support Tickets</h4>
-            <small className="text-muted">
-              Track all customer issues & support requests
-            </small>
-          </div>
+          <PageHeader
+            title="Support Tickets"
+            subtitle="Track all customer issues & support requests"
+          />
 
-          {canCreate && (
-            <Link to="/tickets/new" className="btn btn-primary">
-              <i className="bi bi-plus-lg me-2"></i>
-              New Ticket
-            </Link>
-          )}
+          <div className="d-flex gap-2">
+            {selected.length > 0 && (
+              <button className="btn btn-danger" onClick={openBulkDelete}>
+                <i className="bi bi-trash me-1" />
+                Delete Selected ({selected.length})
+              </button>
+            )}
+
+            {canCreate && (
+              <Link to="/tickets/new" className="btn btn-primary">
+                <i className="bi bi-plus-lg me-2" />
+                New Ticket
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* FILTERS */}
@@ -243,90 +309,111 @@ const TicketList = () => {
 
         {/* TABLE */}
         <div className="card shadow-sm">
-          <div className="card-body p-0">
-            {loading ? (
-              <p className="p-3 mb-0">Loading...</p>
-            ) : total === 0 ? (
-              <p className="p-3 mb-0 text-muted">No tickets found.</p>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-hover table-striped mb-0 align-middle">
-                  <thead className="table-light">
-                    <tr>
-                      {columns.map((col) => (
-                        <th key={col.key}>{col.label}</th>
-                      ))}
-                      <th width="180">Actions</th>
-                    </tr>
-                  </thead>
+          <div className="table-responsive">
+            <table className="table table-hover table-striped mb-0 align-middle">
+              <thead className="table-light">
+                <tr>
+                  <th width="50">
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={handleSelectAll}
+                    />
+                  </th>
 
-                  <tbody>
-                    {paginatedTickets.map((row) => {
-                      const rowId = row._id || row.id;
+                  {columns.map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
 
-                      return (
-                        <tr key={rowId}>
-                          {columns.map((col) => {
-                            const raw =
-                              col.dataIndex === "client"
-                                ? row.client
-                                : col.dataIndex === "assignedTo"
-                                ? row.assignedTo
-                                : row[col.dataIndex];
+                  <th width="180">Actions</th>
+                </tr>
+              </thead>
 
-                            return (
-                              <td key={col.key}>
-                                {col.render ? col.render(raw, row) : raw}
-                              </td>
-                            );
-                          })}
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3">
+                      Loading...
+                    </td>
+                  </tr>
+                ) : total === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3 text-muted">
+                      No tickets found.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedTickets.map((row) => {
+                    const rowId = row._id || row.id;
 
-                          <td>
-                            <div className="btn-group btn-group-sm">
-                              {canView && (
-                                <Link
-                                  to={`/tickets/${rowId}`}
-                                  className="btn btn-outline-secondary"
-                                >
-                                  View
-                                </Link>
-                              )}
+                    return (
+                      <tr key={rowId}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(rowId)}
+                            onChange={() => toggleSelect(rowId)}
+                          />
+                        </td>
 
-                              {canUpdate && (
-                                <Link
-                                  to={`/tickets/${rowId}/edit`}
-                                  className="btn btn-outline-primary"
-                                >
-                                  Edit
-                                </Link>
-                              )}
+                        {columns.map((col) => {
+                          const raw =
+                            col.dataIndex === "client"
+                              ? row.client
+                              : col.dataIndex === "assignedTo"
+                              ? row.assignedTo
+                              : row[col.dataIndex];
 
-                              {canDelete && (
-                                <button
-                                  className="btn btn-outline-danger"
-                                  onClick={() =>
-                                    confirmDelete(rowId, row.subject)
-                                  }
-                                >
-                                  Delete
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
+                          return (
+                            <td key={col.key}>
+                              {col.render ? col.render(raw, row) : raw}
+                            </td>
+                          );
+                        })}
 
-                </table>
-              </div>
-            )}
+                        <td>
+                          <div className="btn-group btn-group-sm">
+                            {canView && (
+                              <Link
+                                to={`/tickets/${rowId}`}
+                                className="btn btn-outline-secondary"
+                              >
+                                View
+                              </Link>
+                            )}
+
+                            {canUpdate && (
+                              <Link
+                                to={`/tickets/${rowId}/edit`}
+                                className="btn btn-outline-primary"
+                              >
+                                Edit
+                              </Link>
+                            )}
+
+                            {canDelete && (
+                              <button
+                                className="btn btn-outline-danger"
+                                onClick={() =>
+                                  confirmDelete(rowId, row.subject)
+                                }
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
 
           {/* PAGINATION */}
           {!loading && total > 0 && (
             <div className="card-footer d-flex justify-content-between align-items-center">
-              {/* Left */}
               <div className="d-flex align-items-center gap-2">
                 <span className="small text-muted">Show</span>
                 <select
@@ -349,7 +436,6 @@ const TicketList = () => {
                 </span>
               </div>
 
-              {/* Right */}
               <div className="d-flex align-items-center gap-2">
                 <button
                   className="btn btn-sm btn-outline-secondary"
@@ -359,7 +445,9 @@ const TicketList = () => {
                   Prev
                 </button>
 
-                <span className="small">Page {currentPage} of {totalPages}</span>
+                <span className="small">
+                  Page {currentPage} of {totalPages}
+                </span>
 
                 <button
                   className="btn btn-sm btn-outline-secondary"
@@ -373,16 +461,15 @@ const TicketList = () => {
           )}
         </div>
 
-        {/* DELETE CONFIRM MODAL */}
+        {/* DELETE MODAL */}
         {showDeleteModal && (
           <>
             <div className="modal fade show d-block">
               <div className="modal-dialog modal-dialog-centered">
                 <div className="modal-content">
-
                   <div className="modal-header">
                     <h5 className="modal-title text-danger">
-                      <i className="bi bi-exclamation-triangle me-2" />
+                      <i className="bi bi-exclamation-triangle-fill me-2" />
                       Confirm Delete
                     </h5>
                     <button
@@ -393,7 +480,8 @@ const TicketList = () => {
                   </div>
 
                   <div className="modal-body">
-                    Are you sure you want to delete ticket <strong>"{deleteSubject}"</strong>?
+                    Are you sure you want to delete{" "}
+                    <strong>{deleteSubject}</strong>?
                   </div>
 
                   <div className="modal-footer">
@@ -413,7 +501,6 @@ const TicketList = () => {
                       {isDeleting ? "Deleting..." : "Yes, Delete"}
                     </button>
                   </div>
-
                 </div>
               </div>
             </div>
@@ -421,7 +508,6 @@ const TicketList = () => {
             <div className="modal-backdrop fade show" />
           </>
         )}
-
       </div>
     </RequirePermission>
   );

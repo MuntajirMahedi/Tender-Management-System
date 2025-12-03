@@ -1,4 +1,3 @@
-// src/pages/renewals/RenewalList.jsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -8,6 +7,7 @@ import { formatDate } from "../../utils/formatters";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
 import useDebounce from "../../hooks/useDebounce";
+import PageHeader from "../../components/PageHeader";
 
 const columns = [
   {
@@ -60,10 +60,16 @@ const RenewalList = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // DELETE MODAL STATE
+  // DELETE MODAL
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
+  const [deleteName, setDeleteName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
+
+  // MULTI SELECT
+  const [selected, setSelected] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -115,27 +121,85 @@ const RenewalList = () => {
   const endIndex = Math.min(startIndex + pageSize, total);
   const paginatedRenewals = filtered.slice(startIndex, endIndex);
 
-  const confirmDelete = (id) => {
+  /* ----------------------------------
+           SINGLE DELETE
+  ---------------------------------- */
+  const confirmDelete = (id, name = "") => {
     setDeleteId(id);
+    setDeleteName(name);
+    setIsBulkDelete(false);
     setShowDeleteModal(true);
   };
 
+  /* ----------------------------------
+           BULK DELETE OPEN
+  ---------------------------------- */
+  const openBulkDelete = () => {
+    if (selected.length === 0) {
+      toast.info("No renewals selected");
+      return;
+    }
+
+    setIsBulkDelete(true);
+    setDeleteName(`${selected.length} renewals`);
+    setShowDeleteModal(true);
+  };
+
+  /* ----------------------------------
+             DELETE ACTION
+  ---------------------------------- */
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
 
-      await renewalApi.deleteRenewal(deleteId);
+      if (isBulkDelete) {
+        // Bulk delete
+        await Promise.all(selected.map((id) => renewalApi.deleteRenewal(id)));
 
-      toast.success("Renewal deleted");
+        setRenewals((prev) =>
+          prev.filter((r) => !selected.includes(r._id || r.id))
+        );
 
-      setRenewals((prev) => prev.filter((r) => (r._id || r.id) !== deleteId));
+        toast.success("Selected renewals deleted");
+
+        setSelected([]);
+        setSelectAll(false);
+      } else {
+        // Single delete
+        await renewalApi.deleteRenewal(deleteId);
+
+        toast.success(`Renewal deleted`);
+
+        setRenewals((prev) =>
+          prev.filter((r) => (r._id || r.id) !== deleteId)
+        );
+      }
 
       setShowDeleteModal(false);
     } catch (err) {
-      toast.error("Failed to delete renewal");
+      toast.error("Delete failed");
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  /* ----------------------------------
+          MULTI SELECT LOGIC
+  ---------------------------------- */
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectAll) {
+      setSelected([]);
+    } else {
+      const ids = paginatedRenewals.map((r) => r._id || r.id);
+      setSelected(ids);
+    }
+    setSelectAll(!selectAll);
   };
 
   return (
@@ -143,19 +207,26 @@ const RenewalList = () => {
       <div>
         {/* HEADER */}
         <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h4 className="mb-0">Renewals</h4>
-            <small className="text-muted">
-              Manage plan renewals & updated validity periods
-            </small>
-          </div>
+          <PageHeader
+            title="Renewals"
+            subtitle="Manage plan renewals & updated validity periods"
+          />
 
-          {canCreate && (
-            <Link to="/renewals/new" className="btn btn-primary">
-              <i className="bi bi-plus-lg me-2" />
-              New Renewal
-            </Link>
-          )}
+          <div className="d-flex gap-2">
+            {selected.length > 0 && (
+              <button className="btn btn-danger" onClick={openBulkDelete}>
+                <i className="bi bi-trash me-1"></i>
+                Delete Selected ({selected.length})
+              </button>
+            )}
+
+            {canCreate && (
+              <Link to="/renewals/new" className="btn btn-primary">
+                <i className="bi bi-plus-lg me-2" />
+                New Renewal
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* SEARCH */}
@@ -178,82 +249,104 @@ const RenewalList = () => {
 
         {/* TABLE */}
         <div className="card shadow-sm">
-          <div className="card-body p-0">
-            {loading ? (
-              <p className="p-3 mb-0">Loading...</p>
-            ) : filtered.length === 0 ? (
-              <p className="p-3 mb-0 text-muted">No renewals found.</p>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-striped table-hover mb-0 align-middle">
-                  <thead className="table-light">
-                    <tr>
-                      {columns.map((col) => (
-                        <th key={col.key}>{col.label}</th>
-                      ))}
-                      <th width="200">Actions</th>
-                    </tr>
-                  </thead>
+          <div className="table-responsive">
+            <table className="table table-striped table-hover mb-0 align-middle">
+              <thead className="table-light">
+                <tr>
+                  <th width="50">
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={toggleSelectAll}
+                    />
+                  </th>
 
-                  <tbody>
-                    {paginatedRenewals.map((row) => {
-                      const rowId = row._id || row.id;
+                  {columns.map((col) => (
+                    <th key={col.key}>{col.label}</th>
+                  ))}
 
-                      return (
-                        <tr key={rowId}>
-                          {columns.map((col) => {
-                            const raw =
-                              col.dataIndex === "client"
-                                ? row.client
-                                : col.dataIndex === "plan"
-                                ? row.plan
-                                : row[col.dataIndex];
+                  <th width="200">Actions</th>
+                </tr>
+              </thead>
 
-                            return (
-                              <td key={col.key}>
-                                {col.render ? col.render(raw) : raw}
-                              </td>
-                            );
-                          })}
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3">
+                      Loading...
+                    </td>
+                  </tr>
+                ) : paginatedRenewals.length === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length + 2} className="p-3 text-muted">
+                      No renewals found.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedRenewals.map((row) => {
+                    const rowId = row._id || row.id;
 
-                          <td>
-                            <div className="btn-group btn-group-sm">
-                              {canView && (
-                                <Link
-                                  to={`/renewals/${rowId}`}
-                                  className="btn btn-outline-secondary"
-                                >
-                                  View
-                                </Link>
-                              )}
+                    return (
+                      <tr key={rowId}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(rowId)}
+                            onChange={() => toggleSelect(rowId)}
+                          />
+                        </td>
 
-                              {canUpdate && (
-                                <Link
-                                  to={`/renewals/${rowId}/edit`}
-                                  className="btn btn-outline-primary"
-                                >
-                                  Edit
-                                </Link>
-                              )}
+                        {columns.map((col) => {
+                          const raw =
+                            col.dataIndex === "client"
+                              ? row.client
+                              : col.dataIndex === "plan"
+                              ? row.plan
+                              : row[col.dataIndex];
 
-                              {canDelete && (
-                                <button
-                                  className="btn btn-outline-danger"
-                                  onClick={() => confirmDelete(rowId)}
-                                >
-                                  Delete
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
+                          return (
+                            <td key={col.key}>
+                              {col.render ? col.render(raw) : raw}
+                            </td>
+                          );
+                        })}
 
-                </table>
-              </div>
-            )}
+                        <td>
+                          <div className="btn-group btn-group-sm">
+                            {canView && (
+                              <Link
+                                to={`/renewals/${rowId}`}
+                                className="btn btn-outline-secondary"
+                              >
+                                View
+                              </Link>
+                            )}
+
+                            {canUpdate && (
+                              <Link
+                                to={`/renewals/${rowId}/edit`}
+                                className="btn btn-outline-primary"
+                              >
+                                Edit
+                              </Link>
+                            )}
+
+                            {canDelete && (
+                              <button
+                                className="btn btn-outline-danger"
+                                onClick={() => confirmDelete(rowId)}
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
 
           {/* PAGINATION */}
@@ -276,6 +369,7 @@ const RenewalList = () => {
                     </option>
                   ))}
                 </select>
+
                 <span className="small text-muted">
                   Showing {startIndex + 1}–{endIndex} of {total}
                 </span>
@@ -312,21 +406,21 @@ const RenewalList = () => {
             <div className="modal fade show d-block">
               <div className="modal-dialog modal-dialog-centered">
                 <div className="modal-content">
-
                   <div className="modal-header">
                     <h5 className="modal-title text-danger">
-                      <i className="bi bi-exclamation-triangle me-2"></i>
+                      <i className="bi bi-exclamation-triangle-fill me-2" />
                       Confirm Delete
                     </h5>
                     <button
                       className="btn-close"
                       disabled={isDeleting}
                       onClick={() => setShowDeleteModal(false)}
-                    ></button>
+                    />
                   </div>
 
                   <div className="modal-body">
-                    Are you sure you want to delete this renewal?
+                    Are you sure you want to delete{" "}
+                    <strong>{deleteName}</strong>?
                   </div>
 
                   <div className="modal-footer">
@@ -346,7 +440,6 @@ const RenewalList = () => {
                       {isDeleting ? "Deleting..." : "Yes, Delete"}
                     </button>
                   </div>
-
                 </div>
               </div>
             </div>

@@ -1,9 +1,9 @@
+// src/pages/dashboard/Dashboard.jsx
 import { useEffect, useState } from "react";
 import SummaryCard from "../../components/SummaryCard";
 
 import SmoothLineChart from "../../components/charts/SmoothLineChart";
 import DonutChart from "../../components/charts/DonutChart";
-import RoundedBarChart from "../../components/charts/RoundedBarChart";
 
 import { reportApi } from "../../api";
 import { formatCurrency } from "../../utils/formatters";
@@ -22,9 +22,10 @@ const Dashboard = () => {
           reportApi.getClientsReport()
         ]);
 
+        // Overview
         setOverview(overview || {});
 
-        // Revenue Trend
+        // Revenue Trend Chart
         setRevenueTrend(
           (paymentsReport?.byDate || []).map((item) => ({
             label: item.period || "N/A",
@@ -32,14 +33,13 @@ const Dashboard = () => {
           }))
         );
 
-        // Client Status Mix
+        // Clients Donut Chart
         setClientTrend(
           (clientsReport?.byStatus || []).map((item) => ({
             label: item.status || "Unknown",
             value: Number(item.count) || 0
           }))
         );
-
       } catch (error) {
         console.error("Unable to load dashboard metrics", error);
       }
@@ -48,34 +48,53 @@ const Dashboard = () => {
     load();
   }, []);
 
-  // Summary Cards
+  // ⭐ TREND CALCULATOR
+  const calcTrend = (current, last) => {
+    if (last === 0 || last === undefined || last === null) return "+100%";
+    const diff = ((current - last) / last) * 100;
+    return diff >= 0 ? `+${diff.toFixed(1)}%` : `${diff.toFixed(1)}%`;
+  };
+
+  // ⭐ SUMMARY CARDS
   const cards = [
     {
       label: "Total Inquiries",
       value: overview.totalInquiries || 0,
       icon: "bi-chat-square-text",
-      trend: 12,
+      trend: calcTrend(
+        overview.currentMonthInquiries,
+        overview.lastMonthInquiries
+      ),
       trendLabel: "vs last month"
     },
     {
       label: "Active Clients",
       value: overview.totalClients || 0,
       icon: "bi-people",
-      trend: 8,
+      trend: calcTrend(
+        overview.currentMonthClients,
+        overview.lastMonthClients
+      ),
       trendLabel: "vs last month"
     },
     {
       label: "Revenue (This month)",
       value: formatCurrency(overview.totalPayments || 0, "INR"),
       icon: "bi-currency-rupee",
-      trend: 23,
+      trend: calcTrend(
+        overview.currentMonthPayments,
+        overview.lastMonthPayments
+      ),
       trendLabel: "vs last month"
     },
     {
       label: "Active Plans",
       value: overview.activePlans || 0,
       icon: "bi-diagram-3-fill",
-      trend: -5,
+      trend: calcTrend(
+        overview.currentMonthPlans,
+        overview.lastMonthPlans
+      ),
       trendLabel: "vs last month"
     }
   ];
@@ -86,9 +105,7 @@ const Dashboard = () => {
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
           <h2>Dashboard</h2>
-          <p className="text-muted mb-0">
-            Welcome to your Total Management System
-          </p>
+          <p className="text-muted mb-0">Welcome to your Total Management System</p>
         </div>
       </div>
 
@@ -109,7 +126,6 @@ const Dashboard = () => {
 
       {/* Charts */}
       <div className="row g-4 mb-4">
-        
         {/* Revenue Trend */}
         <div className="col-lg-7">
           <SmoothLineChart
@@ -119,7 +135,7 @@ const Dashboard = () => {
           />
         </div>
 
-        {/* Client Status Mix (Donut) */}
+        {/* Client Status Donut */}
         <div className="col-lg-5">
           <DonutChart
             title="Client Status Mix"
@@ -127,22 +143,7 @@ const Dashboard = () => {
             colors={["#2563eb", "#22c55e", "#facc15", "#ef4444"]}
           />
         </div>
-
       </div>
-
-      {/* Extra Charts (Optional Future Expansion) */}
-      {/* 
-      <div className="row g-4">
-        <div className="col-lg-12">
-          <RoundedBarChart
-            title="Clients (Bar View)"
-            data={clientTrend}
-            color="#6366f1"
-          />
-        </div>
-      </div> 
-      */}
-
     </div>
   );
 };

@@ -11,7 +11,8 @@ const FormInput = ({
   isTextArea = false,
   icon,
   helpText,
-  onFieldChange,
+  customRender,
+  onChangeCustom,
   ...rest
 }) => (
   <Controller
@@ -22,12 +23,21 @@ const FormInput = ({
       const hasError = Boolean(fieldState.error);
 
       const handleChange = (e) => {
+        // block negative
+        if (type === "number") {
+          let val = Number(e.target.value);
+          if (val < 0) val = 0;
+          e.target.value = val;
+        }
+
         field.onChange(e);
-        if (onFieldChange) onFieldChange(name, e.target.value);
+
+        if (onChangeCustom) onChangeCustom(e);
+        if (rest.onChange) rest.onChange(e);
       };
 
       return (
-        <div className="mb-4">
+        <div className="mb-3">
           {label && (
             <label htmlFor={name} className="form-label fw-semibold">
               {label}
@@ -35,50 +45,44 @@ const FormInput = ({
           )}
 
           <div className="input-group">
-            {icon && (
-              <span className="input-group-text bg-light">
-                <i className={icon}></i>
-              </span>
-            )}
-
             {type === "select" ? (
               <select
-                {...field}
                 id={name}
+                value={field.value ?? ""}
                 className={`form-select ${hasError ? "is-invalid" : ""}`}
                 onChange={handleChange}
-                {...rest}
               >
                 <option value="">Select</option>
-
-                {options.map((opt, index) => (
-                  <option
-                    key={`${name}-opt-${opt.value || index}`}
-                    value={opt.value}
-                  >
+                {options.map((opt, idx) => (
+                  <option key={idx} value={opt.value}>
                     {opt.label}
                   </option>
                 ))}
               </select>
             ) : isTextArea ? (
               <textarea
-                {...field}
                 id={name}
+                value={field.value ?? ""}
                 className={`form-control ${hasError ? "is-invalid" : ""}`}
                 placeholder={placeholder}
                 rows={rest.rows || 3}
                 onChange={handleChange}
-                {...rest}
               />
             ) : (
               <input
-                {...field}
                 id={name}
                 type={type}
+                value={field.value ?? ""}
                 className={`form-control ${hasError ? "is-invalid" : ""}`}
                 placeholder={placeholder}
                 onChange={handleChange}
-                {...rest}
+                onKeyDown={(e) => {
+                  if (type === "number") {
+                    if (["-", "e", "+", ","].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }
+                }}
               />
             )}
 

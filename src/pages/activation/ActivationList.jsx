@@ -1,4 +1,3 @@
-// src/pages/activation/ActivationList.jsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -10,6 +9,7 @@ import { formatDate } from "../../utils/formatters";
 import usePermission from "../../hooks/usePermission";
 import RequirePermission from "../../components/RequirePermission";
 import useDebounce from "../../hooks/useDebounce";
+import PageHeader from "../../components/PageHeader";
 
 const columns = [
   { key: "taskName", label: "Task", dataIndex: "taskName" },
@@ -61,23 +61,29 @@ const ActivationList = () => {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // filters
+  // FILTERS
   const [statusFilter, setStatusFilter] = useState("");
 
-  // search
+  // SEARCH
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
 
-  // pagination
+  // PAGINATION
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // MODAL STATES
+  // DELETE MODAL
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [deleteName, setDeleteName] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
 
+  // MULTI SELECT
+  const [selected, setSelected] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
+
+  /* ------------------------ LOAD TASKS ------------------------ */
   useEffect(() => {
     const load = async () => {
       try {
@@ -105,7 +111,7 @@ const ActivationList = () => {
     load();
   }, []);
 
-  /** Filter + Search */
+  /* ------------------------ FILTER + SEARCH ------------------------ */
   const filtered = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
 
@@ -124,6 +130,7 @@ const ActivationList = () => {
     });
   }, [tasks, statusFilter, debouncedSearch]);
 
+  /* ------------------------ PAGINATION ------------------------ */
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -132,25 +139,53 @@ const ActivationList = () => {
   const endIndex = Math.min(startIndex + pageSize, total);
   const paginatedTasks = filtered.slice(startIndex, endIndex);
 
-  /** OPEN MODAL */
+  /* ------------------------ SINGLE DELETE ------------------------ */
   const confirmDelete = (id, name) => {
+    setIsBulkDelete(false);
     setDeleteId(id);
     setDeleteName(name);
     setShowDeleteModal(true);
   };
 
-  /** PERFORM DELETE */
+  /* ------------------------ BULK DELETE OPEN ------------------------ */
+  const openBulkDelete = () => {
+    if (selected.length === 0) {
+      toast.info("No tasks selected");
+      return;
+    }
+
+    setIsBulkDelete(true);
+    setDeleteName(`${selected.length} tasks`);
+    setShowDeleteModal(true);
+  };
+
+  /* ------------------------ DELETE ACTION ------------------------ */
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
 
-      await activationApi.deleteTask(deleteId);
+      if (isBulkDelete) {
+        // MULTI DELETE
+        await Promise.all(selected.map((id) => activationApi.deleteTask(id)));
 
-      toast.success(`Task "${deleteName}" deleted successfully`);
+        setTasks((prev) =>
+          prev.filter((t) => !selected.includes(t._id || t.id))
+        );
 
-      setTasks((prev) =>
-        prev.filter((t) => (t._id || t.id) !== deleteId)
-      );
+        toast.success("Selected tasks deleted");
+
+        setSelected([]);
+        setSelectAll(false);
+      } else {
+        // SINGLE DELETE
+        await activationApi.deleteTask(deleteId);
+
+        toast.success(`Task "${deleteName}" deleted successfully`);
+
+        setTasks((prev) =>
+          prev.filter((t) => (t._id || t.id) !== deleteId)
+        );
+      }
 
       setShowDeleteModal(false);
     } catch (err) {
@@ -160,24 +195,52 @@ const ActivationList = () => {
     }
   };
 
+  /* ------------------------ MULTI SELECT ------------------------ */
+  const toggleSelect = (id) => {
+    setSelected((prev) =>
+      prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectAll) {
+      setSelected([]);
+    } else {
+      const ids = paginatedTasks.map((t) => t._id || t.id);
+      setSelected(ids);
+    }
+    setSelectAll(!selectAll);
+  };
+
   return (
     <RequirePermission permission="activation:view">
       <div>
+
         {/* HEADER */}
         <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <h4 className="mb-0">Activation Tasks</h4>
-            <small className="text-muted">
-              Manage all onboarding + activation tasks
-            </small>
-          </div>
+          <PageHeader
+            title="Activation Tasks"
+            subtitle="Manage all onboarding + activation tasks"
+          />
 
-          {canCreate && (
-            <Link to="/activation/new" className="btn btn-primary">
-              <i className="bi bi-plus-lg me-2"></i>
-              New Activation Task
-            </Link>
-          )}
+          <div className="d-flex gap-2">
+            {/* DELETE SELECTED BTN */}
+            {selected.length > 0 && canDelete && (
+              <button className="btn btn-danger" onClick={openBulkDelete}>
+                <i className="bi bi-trash me-1" />
+                Delete Selected ({selected.length})
+              </button>
+            )}
+
+            {canCreate && (
+              <Link to="/activation/new" className="btn btn-primary">
+                <i className="bi bi-plus-lg me-2"></i>
+                New Activation Task
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* FILTERS */}
@@ -208,7 +271,7 @@ const ActivationList = () => {
             <div className="col-sm-6 col-md-4">
               <label className="form-label small text-muted">Search</label>
               <input
-                className="form-control form-control-sm"
+                className="form-control form-select-sm"
                 placeholder="Task / Client / Plan / Owner / Status"
                 value={search}
                 onChange={(e) => {
@@ -226,16 +289,25 @@ const ActivationList = () => {
           <div className="card-body p-0">
             {loading ? (
               <p className="p-3 mb-0">Loading...</p>
-            ) : filtered.length === 0 ? (
+            ) : paginatedTasks.length === 0 ? (
               <p className="p-3 mb-0 text-muted">No activation tasks found.</p>
             ) : (
               <div className="table-responsive">
                 <table className="table table-striped table-hover mb-0 align-middle">
                   <thead className="table-light">
                     <tr>
+                      <th width="50">
+                        <input
+                          type="checkbox"
+                          checked={selectAll}
+                          onChange={handleSelectAll}
+                        />
+                      </th>
+
                       {columns.map((col) => (
                         <th key={col.key}>{col.label}</th>
                       ))}
+
                       <th width="180">Actions</th>
                     </tr>
                   </thead>
@@ -246,6 +318,14 @@ const ActivationList = () => {
 
                       return (
                         <tr key={rowId}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selected.includes(rowId)}
+                              onChange={() => toggleSelect(rowId)}
+                            />
+                          </td>
+
                           {columns.map((col) => {
                             const value =
                               col.dataIndex === "client"
@@ -307,7 +387,7 @@ const ActivationList = () => {
           </div>
 
           {/* PAGINATION */}
-          {!loading && filtered.length > 0 && (
+          {!loading && paginatedTasks.length > 0 && (
             <div className="card-footer d-flex justify-content-between align-items-center">
 
               <div className="d-flex align-items-center gap-2">
@@ -377,8 +457,8 @@ const ActivationList = () => {
                   </div>
 
                   <div className="modal-body">
-                    Are you sure you want to delete task  
-                    <strong> "{deleteName}" </strong>?
+                    Are you sure you want to delete{" "}
+                    <strong>{deleteName}</strong>?
                   </div>
 
                   <div className="modal-footer">

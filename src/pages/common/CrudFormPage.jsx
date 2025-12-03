@@ -27,11 +27,15 @@ const CrudFormPage = ({
     control,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { isSubmitting }
   } = useForm({
     resolver: schema ? yupResolver(schema) : undefined,
     defaultValues
   });
+
+  const values = watch();
 
   useEffect(() => {
     const load = async () => {
@@ -77,7 +81,18 @@ const CrudFormPage = ({
                   <FormInput
                     control={control}
                     {...field}
-                    onFieldChange={onFieldChange}
+                    onChangeCustom={(e) => {
+                      setValue(field.name, e.target.value);
+
+                      if (field.onChange) {
+                        field.onChange(e, setValue);
+                      }
+
+                      // ⭐ MAIN FIX — now sending setValue also
+                      if (onFieldChange) {
+                        onFieldChange(field.name, e.target.value, values, setValue);
+                      }
+                    }}
                   />
                 </div>
               ))}
@@ -91,10 +106,7 @@ const CrudFormPage = ({
               >
                 Cancel
               </button>
-              <button
-                disabled={isSubmitting}
-                className="btn btn-primary"
-              >
+              <button disabled={isSubmitting} className="btn btn-primary">
                 {isSubmitting ? "Saving..." : "Save"}
               </button>
             </div>
