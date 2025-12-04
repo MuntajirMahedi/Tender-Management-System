@@ -16,10 +16,16 @@ import "react-phone-input-2/lib/style.css";
 // ⭐ VALIDATION SCHEMA
 const schema = yup.object({
   name: yup.string().required("Prospect name is required"),
-  email: yup.string().email("Enter a valid email").required("Email is required"),
+
+  email: yup
+    .string()
+    .required("Email is required")
+    .matches(
+      /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}$/,
+      "Enter a valid email address"
+    ),
 
   mobile: yup.string().required("Mobile number is required"),
-
   assignedTo: yup.string().required("Assigned To is required"),
   nextFollowUpDate: yup.string().required("Next Follow-Up date is required"),
   interestLevel: yup.string().required("Interest Level is required"),

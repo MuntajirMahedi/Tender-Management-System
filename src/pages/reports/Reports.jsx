@@ -4,7 +4,7 @@ import PageHeader from "../../components/PageHeader";
 
 import RoundedBarChart from "../../components/charts/RoundedBarChart";
 import SmoothLineChart from "../../components/charts/SmoothLineChart";
-import DonutChart from "../../components/charts/DonutChart";
+import DonutChart from "../../components/charts/FunnelChart";
 import AreaChartCard from "../../components/charts/AreaChartCard";
 
 const Reports = () => {

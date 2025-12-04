@@ -11,7 +11,7 @@ const FormInput = ({
   isTextArea = false,
   icon,
   helpText,
-  customRender,
+  customRender,      // ⭐ SUPPORT ADDED
   onChangeCustom,
   ...rest
 }) => (
@@ -23,7 +23,7 @@ const FormInput = ({
       const hasError = Boolean(fieldState.error);
 
       const handleChange = (e) => {
-        // block negative
+        // Block negative & invalid numbers
         if (type === "number") {
           let val = Number(e.target.value);
           if (val < 0) val = 0;
@@ -44,56 +44,77 @@ const FormInput = ({
             </label>
           )}
 
-          <div className="input-group">
-            {type === "select" ? (
-              <select
-                id={name}
-                value={field.value ?? ""}
-                className={`form-select ${hasError ? "is-invalid" : ""}`}
-                onChange={handleChange}
-              >
-                <option value="">Select</option>
-                {options.map((opt, idx) => (
-                  <option key={idx} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            ) : isTextArea ? (
-              <textarea
-                id={name}
-                value={field.value ?? ""}
-                className={`form-control ${hasError ? "is-invalid" : ""}`}
-                placeholder={placeholder}
-                rows={rest.rows || 3}
-                onChange={handleChange}
-              />
-            ) : (
-              <input
-                id={name}
-                type={type}
-                value={field.value ?? ""}
-                className={`form-control ${hasError ? "is-invalid" : ""}`}
-                placeholder={placeholder}
-                onChange={handleChange}
-                onKeyDown={(e) => {
-                  if (type === "number") {
-                    if (["-", "e", "+", ","].includes(e.key)) {
-                      e.preventDefault();
-                    }
-                  }
-                }}
-              />
-            )}
+          {/* ⭐ CUSTOM RENDER BLOCK ADDED */}
+          {customRender ? (
+            <>
+              {customRender({
+                value: field.value,
+                onChange: field.onChange
+              })}
 
-            {hasError && (
-              <div className="invalid-feedback d-block">
-                {fieldState.error.message}
+              {hasError && (
+                <div className="invalid-feedback d-block">
+                  {fieldState.error.message}
+                </div>
+              )}
+
+              {helpText && <div className="form-text">{helpText}</div>}
+            </>
+          ) : (
+            <>
+              <div className="input-group">
+
+                {type === "select" ? (
+                  <select
+                    id={name}
+                    value={field.value ?? ""}
+                    className={`form-select ${hasError ? "is-invalid" : ""}`}
+                    onChange={handleChange}
+                  >
+                    <option value="">Select</option>
+                    {options.map((opt, idx) => (
+                      <option key={idx} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : isTextArea ? (
+                  <textarea
+                    id={name}
+                    value={field.value ?? ""}
+                    className={`form-control ${hasError ? "is-invalid" : ""}`}
+                    placeholder={placeholder}
+                    rows={rest.rows || 3}
+                    onChange={handleChange}
+                  />
+                ) : (
+                  <input
+                    id={name}
+                    type={type}
+                    value={field.value ?? ""}
+                    className={`form-control ${hasError ? "is-invalid" : ""}`}
+                    placeholder={placeholder}
+                    onChange={handleChange}
+                    onKeyDown={(e) => {
+                      if (type === "number") {
+                        if (["-", "e", "+", ","].includes(e.key)) {
+                          e.preventDefault();
+                        }
+                      }
+                    }}
+                  />
+                )}
+
+                {hasError && (
+                  <div className="invalid-feedback d-block">
+                    {fieldState.error.message}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {helpText && <div className="form-text">{helpText}</div>}
+              {helpText && <div className="form-text">{helpText}</div>}
+            </>
+          )}
         </div>
       );
     }}

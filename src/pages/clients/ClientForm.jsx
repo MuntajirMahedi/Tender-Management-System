@@ -15,11 +15,36 @@ import "react-phone-input-2/lib/style.css";
 //
 const schema = yup.object({
   name: yup.string().required("Client name is required"),
+
   mobile: yup.string().required("Mobile number is required"),
+
+  // ⭐ Email (Optional but Valid Only If Entered)
+  email: yup
+    .string()
+    .nullable()
+    .transform((v) => (v === "" ? null : v))
+    .matches(
+      /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}$/,
+      "Enter a valid email"
+    )
+    .optional(),
+
+  // ⭐ Alt Email (Optional but Valid Only If Entered)
+  altEmail: yup
+    .string()
+    .nullable()
+    .transform((v) => (v === "" ? null : v))
+    .matches(
+      /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}$/,
+      "Enter a valid alternate email"
+    )
+    .optional(),
+
   status: yup.string().required("Status is required"),
   assignedSales: yup.string().required("Assigned Sales user is required"),
   assignedCare: yup.string().required("Assigned Care user is required"),
 });
+
 
 //
 // Default Values

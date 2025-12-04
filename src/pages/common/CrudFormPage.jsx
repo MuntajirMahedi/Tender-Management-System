@@ -37,6 +37,12 @@ const CrudFormPage = ({
 
   const values = watch();
 
+  // ⭐ ALWAYS SCROLL TO TOP WHEN PAGE LOADS
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  // ⭐ SCROLL TO TOP WHEN EDIT DATA LOADED
   useEffect(() => {
     const load = async () => {
       if (!isEdit || !fetcher) return;
@@ -45,6 +51,9 @@ const CrudFormPage = ({
       try {
         const response = await fetcher(id);
         reset(response);
+
+        // scroll again once data is ready
+        window.scrollTo({ top: 0, behavior: "smooth" });
       } catch (error) {
         console.error("Error loading record:", error);
       } finally {
@@ -61,6 +70,7 @@ const CrudFormPage = ({
       else await createFn(values);
 
       navigate(redirectPath);
+      window.scrollTo({ top: 0, behavior: "smooth" }); // ⭐ SCROLL AFTER SAVE NAVIGATION
     } catch (error) {
       console.error("Save error:", error);
     }
@@ -88,7 +98,6 @@ const CrudFormPage = ({
                         field.onChange(e, setValue);
                       }
 
-                      // ⭐ MAIN FIX — now sending setValue also
                       if (onFieldChange) {
                         onFieldChange(field.name, e.target.value, values, setValue);
                       }
@@ -101,15 +110,20 @@ const CrudFormPage = ({
             <div className="d-flex justify-content-end gap-2 mt-4">
               <button
                 type="button"
-                onClick={() => navigate(redirectPath)}
+                onClick={() => {
+                  navigate(redirectPath);
+                  window.scrollTo({ top: 0, behavior: "smooth" }); // ⭐ SCROLL WHEN CANCEL
+                }}
                 className="btn btn-light border"
               >
                 Cancel
               </button>
+
               <button disabled={isSubmitting} className="btn btn-primary">
                 {isSubmitting ? "Saving..." : "Save"}
               </button>
             </div>
+
           </form>
         </div>
       </div>

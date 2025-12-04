@@ -8,46 +8,30 @@ import { toast } from "react-toastify";
 import PageHeader from "../../components/PageHeader";
 
 const columns = [
-  {
-    key: "createdAt",
-    label: "Timestamp",
-    dataIndex: "createdAt",
-    render: (value) => formatDateTime(value)
-  },
-  {
-    key: "user",
-    label: "User",
-    dataIndex: "user",
-    render: (value) => value?.name || "System"
-  },
-  {
-    key: "module",
-    label: "Module",
-    dataIndex: "module"
-  },
-  {
-    key: "action",
-    label: "Action",
-    dataIndex: "action"
-  },
-  {
-    key: "description",
-    label: "Description",
-    dataIndex: "description"
-  }
+  { key: "createdAt", label: "Timestamp", dataIndex: "createdAt", render: (v) => formatDateTime(v) },
+  { key: "user", label: "User", dataIndex: "user", render: (v) => v?.name || "System" },
+  { key: "module", label: "Module", dataIndex: "module" },
+  { key: "action", label: "Action", dataIndex: "action" },
+  { key: "description", label: "Description", dataIndex: "description" }
 ];
 
 const AuditLogs = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // search
+  // filters
   const [search, setSearch] = useState("");
+  const [filterUser, setFilterUser] = useState("");
+  const [filterModule, setFilterModule] = useState("");
+  const [filterAction, setFilterAction] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
   const debouncedSearch = useDebounce(search, 300);
 
-  // pagination state
-  const [page, setPage] = useState(1); // 1-based
-  const [pageSize, setPageSize] = useState(10); // 10 / 25 / 50 / 100
+  // pagination
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     const load = async () => {
@@ -56,13 +40,9 @@ const AuditLogs = () => {
         const res = await auditApi.getAuditLogs();
 
         let list = [];
-        if (Array.isArray(res)) {
-          list = res;
-        } else if (Array.isArray(res?.logs)) {
-          list = res.logs;
-        } else if (Array.isArray(res?.data)) {
-          list = res.data;
-        }
+        if (Array.isArray(res)) list = res;
+        else if (Array.isArray(res?.logs)) list = res.logs;
+        else if (Array.isArray(res?.data)) list = res.data;
 
         setLogs(list);
       } catch (err) {
@@ -77,106 +57,123 @@ const AuditLogs = () => {
     load();
   }, []);
 
-  // filter logs by search (user, module, action, description)
+  // ===== FILTERING =====
   const filteredLogs = useMemo(() => {
     const term = debouncedSearch.trim().toLowerCase();
-    if (!term) return logs;
 
     return logs.filter((log) => {
-      const userName = (log.user?.name || "").toLowerCase();
-      const module = (log.module || "").toLowerCase();
-      const action = (log.action || "").toLowerCase();
-      const desc = (log.description || "").toLowerCase();
+      const uName = (log.user?.name || "").toLowerCase();
+      const m = (log.module || "").toLowerCase();
+      const a = (log.action || "").toLowerCase();
+      const d = (log.description || "").toLowerCase();
+
+      const created = new Date(log.createdAt);
+      const afterFrom = dateFrom ? created >= new Date(dateFrom) : true;
+      const beforeTo = dateTo ? created <= new Date(dateTo + " 23:59:59") : true;
 
       return (
-        userName.includes(term) ||
-        module.includes(term) ||
-        action.includes(term) ||
-        desc.includes(term)
+        (term === "" ||
+          uName.includes(term) ||
+          m.includes(term) ||
+          a.includes(term) ||
+          d.includes(term)) &&
+        (filterUser ? uName === filterUser.toLowerCase() : true) &&
+        (filterModule ? m === filterModule.toLowerCase() : true) &&
+        (filterAction ? a === filterAction.toLowerCase() : true) &&
+        afterFrom &&
+        beforeTo
       );
     });
-  }, [logs, debouncedSearch]);
+  }, [logs, debouncedSearch, filterUser, filterModule, filterAction, dateFrom, dateTo]);
 
+  // pagination
   const total = filteredLogs.length;
-  const totalPages = total === 0 ? 1 : Math.ceil(total / pageSize);
-
-  // clamp current page so we never go out of range
-  const currentPage = total === 0 ? 1 : Math.min(page, totalPages);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(page, totalPages);
 
   const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, total);
-  const paginatedLogs = filteredLogs.slice(startIndex, endIndex);
+  const paginatedLogs = filteredLogs.slice(startIndex, startIndex + pageSize);
 
-  const handlePageSizeChange = (e) => {
-    const value = Number(e.target.value) || 10;
-    setPageSize(value);
-    setPage(1); // reset to first page when page size changes
-  };
-
-  const handlePrev = () => {
-    if (currentPage > 1) {
-      setPage(currentPage - 1);
-    }
-  };
-
-  const handleNext = () => {
-    if (currentPage < totalPages) {
-      setPage(currentPage + 1);
-    }
-  };
+  // extract unique filter lists
+  const users = [...new Set(logs.map((l) => l.user?.name).filter(Boolean))];
+  const modules = [...new Set(logs.map((l) => l.module).filter(Boolean))];
+  const actions = [...new Set(logs.map((l) => l.action).filter(Boolean))];
 
   return (
     <RequirePermission permission="audit:view">
       <div>
-        {/* HEADER */}
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
-            <PageHeader title="Audit Logs" subtitle="Track every activity performed in the platform" />
-            {/* <h4 className="mb-0">Audit Logs</h4>
-            <small className="text-muted">
-              Track every activity performed in the platform
-            </small> */}
-          </div>
+        <PageHeader title="Audit Logs" subtitle="Track every activity performed in the platform" />
 
-          <div style={{ minWidth: 260 }}>
-            <label className="form-label text-muted small mb-1">Search</label>
-            <input
-              className="form-control"
-              placeholder="Search by user, module, action or description"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+        {/* FILTER BAR */}
+        <div className="card p-3 shadow-sm mb-3">
+          <div className="row g-3">
+            <div className="col-md-3">
+              <label className="form-label small">Search</label>
+              <input className="form-control" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search logs..." />
+            </div>
+
+            <div className="col-md-2">
+              <label className="form-label small">User</label>
+              <select className="form-select" value={filterUser} onChange={(e) => setFilterUser(e.target.value)}>
+                <option value="">All</option>
+                {users.map((u) => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-md-2">
+              <label className="form-label small">Module</label>
+              <select className="form-select" value={filterModule} onChange={(e) => setFilterModule(e.target.value)}>
+                <option value="">All</option>
+                {modules.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-md-2">
+              <label className="form-label small">Action</label>
+              <select className="form-select" value={filterAction} onChange={(e) => setFilterAction(e.target.value)}>
+                <option value="">All</option>
+                {actions.map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-md-1">
+              <label className="form-label small">From</label>
+              <input type="date" className="form-control" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            </div>
+
+            <div className="col-md-1">
+              <label className="form-label small">To</label>
+              <input type="date" className="form-control" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            </div>
           </div>
         </div>
 
-        {/* TABLE */}
+        {/* TABLE + PAGINATION */}
         <div className="card shadow-sm">
           <div className="card-body p-0">
             {loading ? (
-              <p className="p-3 mb-0">Loading...</p>
-            ) : total === 0 ? (
-              <p className="p-3 mb-0 text-muted">No audit logs found.</p>
+              <p className="p-3">Loading...</p>
+            ) : filteredLogs.length === 0 ? (
+              <p className="p-3 text-muted mb-0">No audit logs found.</p>
             ) : (
               <div className="table-responsive">
                 <table className="table table-striped table-hover mb-0">
                   <thead className="table-light">
-                    <tr>
-                      {columns.map((col) => (
-                        <th key={col.key}>{col.label}</th>
-                      ))}
-                    </tr>
+                    <tr>{columns.map((c) => <th key={c.key}>{c.label}</th>)}</tr>
                   </thead>
+
                   <tbody>
                     {paginatedLogs.map((log) => (
                       <tr key={log._id || log.id}>
                         {columns.map((col) => {
-                          const rawValue =
-                            col.dataIndex === "user" ? log.user : log[col.dataIndex];
-                          return (
-                            <td key={col.key}>
-                              {col.render ? col.render(rawValue, log) : rawValue}
-                            </td>
-                          );
+                          const raw = col.dataIndex === "user" ? log.user : log[col.dataIndex];
+                          return <td key={col.key}>{col.render ? col.render(raw) : raw}</td>;
                         })}
                       </tr>
                     ))}
@@ -187,52 +184,25 @@ const AuditLogs = () => {
           </div>
 
           {/* PAGINATION FOOTER */}
-          {!loading && total > 0 && (
-            <div className="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
-              {/* left: page size + info */}
+          {!loading && filteredLogs.length > 0 && (
+            <div className="card-footer d-flex justify-content-between align-items-center">
               <div className="d-flex align-items-center gap-2">
-                <span className="text-muted small">Show</span>
-                <select
-                  className="form-select form-select-sm"
-                  style={{ width: "auto" }}
-                  value={pageSize}
-                  onChange={handlePageSizeChange}
-                >
+                <span className="small text-muted">Show</span>
+                <select className="form-select form-select-sm" value={pageSize} onChange={(e) => { setPageSize(+e.target.value); setPage(1); }}>
                   <option value={10}>10</option>
                   <option value={25}>25</option>
                   <option value={50}>50</option>
                   <option value={100}>100</option>
                 </select>
-                <span className="text-muted small">entries</span>
-
-                <span className="text-muted small ms-3">
-                  Showing{" "}
-                  {total === 0
-                    ? "0"
-                    : `${startIndex + 1}–${endIndex}`}{" "}
-                  of {total} entries
+                <span className="small text-muted ms-3">
+                  Showing {startIndex + 1}–{Math.min(startIndex + pageSize, total)} of {total}
                 </span>
               </div>
 
-              {/* right: pagination buttons */}
               <div className="d-flex align-items-center gap-2">
-                <button
-                  className="btn btn-sm btn-outline-secondary"
-                  onClick={handlePrev}
-                  disabled={currentPage <= 1}
-                >
-                  Prev
-                </button>
-                <span className="small">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <button
-                  className="btn btn-sm btn-outline-secondary"
-                  onClick={handleNext}
-                  disabled={currentPage >= totalPages}
-                >
-                  Next
-                </button>
+                <button className="btn btn-sm btn-outline-secondary" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Prev</button>
+                <span className="small">Page {currentPage} of {totalPages}</span>
+                <button className="btn btn-sm btn-outline-secondary" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>Next</button>
               </div>
             </div>
           )}
