@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import Chart from "react-apexcharts";
+import {
+  ResponsiveContainer,
+  FunnelChart,
+  Funnel,
+  LabelList,
+  Tooltip,
+  Cell,
+} from "recharts";
+
 import { inquiryApi, clientApi } from "../api";
 import { getUpcomingRenewals } from "../api/renewals";
 import usePermission from "../hooks/usePermission";
@@ -7,7 +15,6 @@ import usePermission from "../hooks/usePermission";
 const ConversionFunnel = () => {
   const { can } = usePermission();
 
-  // Permissions
   const canInquiries = can("inquiry:view");
   const canClients = can("client:view");
   const canRenewals = can("renewal:view");
@@ -15,7 +22,7 @@ const ConversionFunnel = () => {
   const [funnelData, setFunnelData] = useState([]);
 
   useEffect(() => {
-    if (!canInquiries && !canClients && !canRenewals) return; // No permission → hide card
+    if (!canInquiries && !canClients && !canRenewals) return;
 
     const load = async () => {
       try {
@@ -31,25 +38,42 @@ const ConversionFunnel = () => {
 
         const temp = [];
 
-        // Inquiry-based
         if (canInquiries) {
-          temp.push({ label: "Total Inquiries", value: inquiries.length });
+          temp.push({
+            name: "Total Inquiries",
+            value: inquiries.length,
+            fill: "#1E40AF",
+          });
 
           const prospects = inquiries.filter((i) => i.status === "Prospect").length;
-          temp.push({ label: "Prospects", value: prospects });
+          temp.push({
+            name: "Prospects",
+            value: prospects,
+            fill: "#2563EB",
+          });
         }
 
-        // Client-based
         if (canClients) {
-          temp.push({ label: "Total Clients", value: clients.length });
+          temp.push({
+            name: "Total Clients",
+            value: clients.length,
+            fill: "#3B82F6",
+          });
 
           const activeClients = clients.filter((c) => c.status === "Active").length;
-          temp.push({ label: "Active Clients", value: activeClients });
+          temp.push({
+            name: "Active Clients",
+            value: activeClients,
+            fill: "#60A5FA",
+          });
         }
 
-        // Renewal-based
         if (canRenewals) {
-          temp.push({ label: "Upcoming Renewals", value: renewals.length });
+          temp.push({
+            name: "Upcoming Renewals",
+            value: renewals.length,
+            fill: "#93C5FD",
+          });
         }
 
         setFunnelData(temp);
@@ -61,54 +85,7 @@ const ConversionFunnel = () => {
     load();
   }, [canInquiries, canClients, canRenewals]);
 
-  // No data → hide full card
   if (funnelData.length === 0) return null;
-
-  const chartOptions = {
-    chart: {
-      type: "bar",
-      toolbar: { show: false },
-      animations: { enabled: true },
-    //   background: "transparent",
-    },
-    plotOptions: {
-      bar: {
-        borderRadius: 0,
-        horizontal: true,
-        distributed: true,
-        barHeight: "80%",
-        isFunnel: true,
-        // background: "transparent",
-      },
-    },
-    colors: ["#1E40AF", "#2563EB", "#3B82F6", "#60A5FA", "#93C5FD"],
-    dataLabels: {
-      enabled: true,
-      formatter: function (val, opt) {
-        return funnelData[opt.dataPointIndex]?.label + ": " + val;
-      },
-      style: {
-        fontSize: "14px",
-        fontWeight: 600,
-        // colors: ["#fff"],
-      },
-      dropShadow: {
-        enabled: true,
-        blur: 3,
-        opacity: 0.4,
-      },
-    },
-    xaxis: {
-      categories: funnelData.map((d) => d.label),
-      labels: { show: false },
-      axisBorder: { show: false },
-      axisTicks: { show: false },
-    },
-    yaxis: { show: false },
-    grid: { show: false },
-    legend: { show: false },
-    tooltip: { enabled: true },
-  };
 
   return (
     <div
@@ -116,9 +93,7 @@ const ConversionFunnel = () => {
       style={{
         padding: "20px",
         borderRadius: "16px",
-        // boxShadow: "0 8px 24px hsla(0, 0%, 0%, 0.00)",
-        position: "relative",
-        // background: "transparent", // ⭐ SAME DESIGN — only background transparent
+        boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
       }}
     >
       {/* Header */}
@@ -127,8 +102,8 @@ const ConversionFunnel = () => {
 
         <span
           style={{
-            // background: "transparent",
-            // color: "#475569",
+            background: "#f1f5f9",
+            color: "#475569",
             padding: "4px 12px",
             fontSize: "12px",
             borderRadius: "12px",
@@ -139,14 +114,27 @@ const ConversionFunnel = () => {
         </span>
       </div>
 
-      {/* Funnel Chart */}
-      <div style={{ position: "relative", height: "350px", marginTop: "10px" }}>
-        <Chart
-          type="bar"
-          height={350}
-          series={[{ data: funnelData.map((d) => d.value) }]}
-          options={chartOptions}
-        />
+      {/* RECHARTS FUNNEL — EXACT DESIGN */}
+      <div style={{ width: "100%", height: 300 }}>
+        <ResponsiveContainer>
+          <FunnelChart>
+            <Tooltip />
+
+            <Funnel dataKey="value" data={funnelData} isAnimationActive>
+              <LabelList
+                dataKey="name"
+                position="center"
+                fill="#fff"
+                stroke="none"
+                style={{ fontWeight: "600" }}
+              />
+
+              {funnelData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.fill} />
+              ))}
+            </Funnel>
+          </FunnelChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
