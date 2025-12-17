@@ -16,7 +16,7 @@ const UpcomingRenewals = () => {
     const load = async () => {
       try {
         const res = await getUpcomingRenewals({ limit: 5 });
-        setItems(res.plans || []);   // ✅ FIXED: API returns "plans"
+        setItems(res.plans || []);
       } catch (err) {
         console.error("Upcoming renewals load failed", err);
       }
@@ -27,6 +27,11 @@ const UpcomingRenewals = () => {
 
   if (!canView) return null;
 
+  // ✅ SORT + FIRST 3
+  const visibleItems = [...items]
+    .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate))
+    .slice(0, 3);
+
   return (
     <div
       className="summary-card"
@@ -34,7 +39,11 @@ const UpcomingRenewals = () => {
         borderRadius: "16px",
         padding: "20px",
         boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
-        height: "100%",
+
+        /* ✅ IMPORTANT FIX */
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "flex-start",
       }}
     >
       {/* Header */}
@@ -51,16 +60,16 @@ const UpcomingRenewals = () => {
             fontWeight: 600,
           }}
         >
-          {items.length}
+          {visibleItems.length}
         </span>
       </div>
 
       {/* List */}
-      {items.length === 0 ? (
+      {visibleItems.length === 0 ? (
         <p className="text-muted small">No upcoming renewals.</p>
       ) : (
-        <div style={{ maxHeight: 350, overflowY: "auto" }}>
-          {items.map((p) => (
+        <div>
+          {visibleItems.map((p) => (
             <div
               key={p.planId || p._id}
               className="p-3 mb-3"
@@ -72,22 +81,20 @@ const UpcomingRenewals = () => {
             >
               <div className="d-flex justify-content-between">
                 <div>
-                  {/* Client Name */}
-                  <div className="fw-semibold">{p.client?.name}</div>
+                  <div className="fw-semibold">
+                    {p.client?.name || "—"}
+                  </div>
 
-                  {/* Plan Name */}
                   <div className="text-muted small">
                     {p.planType} – {p.planName}
                   </div>
 
-                  {/* Expiry Date */}
                   <div className="small mt-1">
                     <i className="bi bi-calendar3 me-1"></i>
                     {formatDate(p.expiryDate)}
                   </div>
                 </div>
 
-                {/* Status Badge */}
                 <span
                   className="badge text-capitalize"
                   style={{
@@ -110,7 +117,6 @@ const UpcomingRenewals = () => {
                 </span>
               </div>
 
-              {/* Amount (optional) */}
               {p.netAmount && (
                 <div className="fw-bold mt-2">
                   ₹{Number(p.netAmount).toLocaleString()}
